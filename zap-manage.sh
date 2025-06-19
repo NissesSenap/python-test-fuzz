@@ -7,7 +7,7 @@ set -e
 
 # Configuration
 ZAP_PORT=${ZAP_PORT:-8080}
-ZAP_HOST=${ZAP_HOST:-localhost}
+ZAP_HOST=${ZAP_HOST:-0.0.0.0}
 ZAP_MEMORY=${ZAP_MEMORY:-1024m}
 REPORTS_DIR="reports"
 
@@ -79,13 +79,16 @@ start_zap_daemon() {
             fi
         fi
         
-        # Start ZAP in daemon mode using Docker
+        # Start ZAP in daemon mode using Docker with host network access
         docker run -d \
             --name zap-daemon \
-            -p $ZAP_PORT:$ZAP_PORT \
+            --network host \
             -v "$(pwd)/$REPORTS_DIR:/zap/wrk" \
             zaproxy/zap-stable \
-            zap.sh -daemon -host 0.0.0.0 -port $ZAP_PORT -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true -config api.disablekey=true
+            zap.sh -daemon -host 0.0.0.0 -port $ZAP_PORT \
+            -config api.addrs.addr.name=.* \
+            -config api.addrs.addr.regex=true \
+            -config api.disablekey=true
             
         log_success "ZAP daemon started in Docker container"
     else
@@ -202,7 +205,7 @@ run_full_scan() {
 }
 
 run_api_scan() {
-    local target_url=${1:-"http://localhost:8000"}
+    local target_url=${1:-"http://0.0.0.0:8000"}
     run_scan_via_daemon "$target_url" "api"
 }
 
@@ -242,19 +245,19 @@ show_help() {
     echo "  start               Start ZAP daemon"
     echo "  stop                Stop ZAP daemon"
     echo "  status              Show ZAP status"
-    echo "  baseline [URL]      Run baseline scan (default: http://localhost:8000)"
-    echo "  fullscan [URL]      Run full scan (default: http://localhost:8000)"
-    echo "  apiscan [URL]       Run API DAST scan (default: http://localhost:8000)"
+    echo "  baseline [URL]      Run baseline scan (default: http://0.0.0.0:8000)"
+    echo "  fullscan [URL]      Run full scan (default: http://0.0.0.0:8000)"
+    echo "  apiscan [URL]       Run API DAST scan (default: http://0.0.0.0:8000)"
     echo "  help                Show this help message"
     echo ""
     echo "Environment Variables:"
     echo "  ZAP_PORT           ZAP proxy port (default: 8080)"
-    echo "  ZAP_HOST           ZAP host (default: localhost)"
+    echo "  ZAP_HOST           ZAP host (default: 0.0.0.0)"
     echo "  ZAP_MEMORY         ZAP memory allocation (default: 1024m)"
     echo ""
     echo "Examples:"
     echo "  $0 start"
-    echo "  $0 apiscan http://localhost:8000"
+    echo "  $0 apiscan http://0.0.0.0:8000"
     echo "  $0 baseline http://example.com"
     echo "  $0 stop"
 }
@@ -271,13 +274,13 @@ case "${1:-help}" in
         show_status
         ;;
     baseline)
-        run_baseline_scan "${2:-http://localhost:8000}"
+        run_baseline_scan "${2:-http://0.0.0.0:8000}"
         ;;
     fullscan)
-        run_full_scan "${2:-http://localhost:8000}"
+        run_full_scan "${2:-http://0.0.0.0:8000}"
         ;;
     apiscan)
-        run_api_scan "${2:-http://localhost:8000}"
+        run_api_scan "${2:-http://0.0.0.0:8000}"
         ;;
     help|--help|-h)
         show_help

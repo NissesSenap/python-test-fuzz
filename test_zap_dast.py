@@ -15,10 +15,10 @@ from zapv2 import ZAPv2
 
 
 class ZAPDastTester:
-    def __init__(self, target_url: str = "http://localhost:8000", zap_proxy_port: int = 8080):
+    def __init__(self, target_url: str = "http://0.0.0.0:8000", zap_proxy_port: int = 8080):
         self.target_url = target_url
         self.zap_proxy_port = zap_proxy_port
-        self.zap_proxy_url = f"http://localhost:{zap_proxy_port}"
+        self.zap_proxy_url = f"http://0.0.0.0:{zap_proxy_port}"
         self.zap_api_key = os.getenv("ZAP_API_KEY", None)
         self.reports_dir = Path("reports")
         self.reports_dir.mkdir(exist_ok=True)
@@ -26,7 +26,7 @@ class ZAPDastTester:
         # ZAP API client - connect to ZAP daemon API
         self.zap = ZAPv2(
             proxies={
-                'http': f'http://localhost:{zap_proxy_port}', 
+                'http': f'http://0.0.0.0:{zap_proxy_port}', 
             }
         )
         
@@ -101,9 +101,13 @@ class ZAPDastTester:
             print("Starting ZAP spider...")
             scan_id = self.zap.spider.scan(self.target_url)
             
+            # Give the spider time to start
+            time.sleep(2)
+            
             # Wait for spider to complete
             while int(self.zap.spider.status(scan_id)) < 100:
-                print(f"Spider progress: {self.zap.spider.status(scan_id)}%")
+                progress = self.zap.spider.status(scan_id)
+                print(f"Spider progress: {progress}%")
                 time.sleep(5)
             
             print("✓ Spider completed")
@@ -111,6 +115,18 @@ class ZAPDastTester:
             # Get spider results
             spider_results = self.zap.spider.results(scan_id)
             print(f"Spider found {len(spider_results)} URLs")
+            
+            # Also show what URLs were found
+            if spider_results:
+                print("URLs discovered:")
+                for i, url in enumerate(spider_results[:10]):  # Show first 10
+                    print(f"  {i+1}. {url}")
+                if len(spider_results) > 10:
+                    print(f"  ... and {len(spider_results) - 10} more")
+            
+            # Wait a bit for ZAP to process all the discovered URLs
+            print("Waiting for ZAP to process discovered URLs...")
+            time.sleep(5)
             
             return True
             
@@ -146,13 +162,39 @@ class ZAPDastTester:
         try:
             print("Starting active scan...")
             
+            # Show current sites in ZAP
+            sites = self.zap.core.sites
+            if sites:
+                print(f"Sites in ZAP scope: {sites}")
+            else:
+                print("Warning: No sites found in ZAP scope")
+            
             # Start active scan
             scan_id = self.zap.ascan.scan(self.target_url)
+            print(f"Active scan started with ID: {scan_id}")
             
-            # Wait for active scan to complete
+            # Give the scan time to start
+            time.sleep(5)
+            
+            # Wait for active scan to complete with more detailed progress
+            last_progress = 0
+            stalled_count = 0
+            max_stall_cycles = 6  # Allow 6 cycles (60 seconds) of no progress
+            
             while int(self.zap.ascan.status(scan_id)) < 100:
-                progress = self.zap.ascan.status(scan_id)
+                progress = int(self.zap.ascan.status(scan_id))
                 print(f"Active scan progress: {progress}%")
+                
+                # Check if progress is stalled
+                if progress == last_progress:
+                    stalled_count += 1
+                    if stalled_count >= max_stall_cycles:
+                        print("⚠️  Active scan appears stalled, continuing...")
+                        break
+                else:
+                    stalled_count = 0
+                    last_progress = progress
+                
                 time.sleep(10)
             
             print("✓ Active scan completed")
@@ -235,6 +277,29 @@ class ZAPDastTester:
         except Exception as e:
             print(f"✗ Failed to generate summary: {e}")
     
+    def show_zap_scope(self) -> None:
+        """Show what URLs are currently in ZAP's scope"""
+        try:
+            sites = self.zap.core.sites
+            print(f"\n📍 Current ZAP scope:")
+            if sites:
+                for site in sites:
+                    print(f"  - {site}")
+                    # Try to get URLs for this site
+                    try:
+                        urls = self.zap.core.urls(site)
+                        print(f"    Found {len(urls)} URLs:")
+                        for url in urls[:5]:  # Show first 5 URLs
+                            print(f"      • {url}")
+                        if len(urls) > 5:
+                            print(f"      ... and {len(urls) - 5} more")
+                    except Exception as e:
+                        print(f"    Could not get URLs: {e}")
+            else:
+                print("  No sites in scope")
+        except Exception as e:
+            print(f"Failed to get ZAP scope: {e}")
+    
     def run_full_scan(self) -> bool:
         """Run complete ZAP DAST scan"""
         print("🔍 Starting OWASP ZAP DAST scan...")
@@ -254,6 +319,26 @@ class ZAPDastTester:
             # Access target URL so ZAP has something to work with
             print(f"Accessing target {self.target_url}")
             self.zap.urlopen(self.target_url)
+            
+            # Also access some key endpoints to help ZAP discover them
+            key_endpoints = [
+                "/",
+                "/health", 
+                "/openapi.json",
+                "/docs",
+                "/users",
+                "/products"
+            ]
+            
+            for endpoint in key_endpoints:
+                try:
+                    url = f"{self.target_url}{endpoint}"
+                    print(f"Accessing {url}")
+                    self.zap.urlopen(url)
+                    time.sleep(1)  # Small delay between requests
+                except Exception as e:
+                    print(f"Failed to access {url}: {e}")
+            
             time.sleep(2)  # Give the sites tree a chance to get updated
             
             # Get and import OpenAPI spec
@@ -265,6 +350,9 @@ class ZAPDastTester:
             
             # Run spider
             self.spider_application()
+            
+            # Show what ZAP has discovered
+            self.show_zap_scope()
             
             # Run scans
             passive_results = self.run_passive_scan()
@@ -292,7 +380,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="Run OWASP ZAP DAST tests")
-    parser.add_argument("--target", default="http://localhost:8000", help="Target URL")
+    parser.add_argument("--target", default="http://0.0.0.0:8000", help="Target URL")
     parser.add_argument("--zap-port", type=int, default=8080, help="ZAP proxy port")
     parser.add_argument("--baseline-only", action="store_true", help="Run only baseline scan")
     
