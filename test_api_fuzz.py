@@ -6,7 +6,8 @@ Pytest-based API fuzzing tests using schemathesis
 import pytest
 import schemathesis
 import requests
-from schemathesis.checks import not_a_server_error, response_schema_conformance, status_code_conformance
+from schemathesis.checks import not_a_server_error
+from schemathesis.specs.openapi.checks import response_schema_conformance, status_code_conformance
 
 # URL of the running FastAPI application
 API_BASE_URL = "http://localhost:8000"
