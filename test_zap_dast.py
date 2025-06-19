@@ -14,7 +14,7 @@ from zapv2 import ZAPv2
 
 
 class ZAPDastTester:
-    def __init__(self, target_url: str = "http://localhost:8080", zap_proxy_port: int = 9090):
+    def __init__(self, target_url: str = "http://localhost:9090", zap_proxy_port: int = 9090):
         self.target_url = target_url
         self.zap_proxy_port = zap_proxy_port
         self.zap_proxy_url = f"http://localhost:{zap_proxy_port}"
@@ -295,7 +295,7 @@ def main():
     
     parser = argparse.ArgumentParser(description="Run OWASP ZAP DAST tests")
     parser.add_argument("--target", default="http://localhost:8000", help="Target URL")
-    parser.add_argument("--zap-port", type=int, default=8080, help="ZAP proxy port")
+    parser.add_argument("--zap-port", type=int, default=9090, help="ZAP proxy port")
     parser.add_argument("--baseline-only", action="store_true", help="Run only baseline scan")
     
     args = parser.parse_args()
