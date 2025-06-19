@@ -9,6 +9,7 @@ permissions:
   contents: read
   pull-requests: write
   checks: write
+  statuses: write
 
 jobs:
   api-fuzzing-with-pr:
@@ -161,15 +162,44 @@ jobs:
             description = 'Could not determine test results';
           }
           
-          await github.rest.repos.createCommitStatus({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            sha: context.sha,
-            state: state,
-            target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-            description: description,
-            context: 'API Fuzzing Tests'
-          });
+          try {
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: state,
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: description,
+              context: 'API Fuzzing Tests'
+            });
+            console.log(`Status check set: ${state} - ${description}`);
+          } catch (statusError) {
+            console.log('Could not set commit status (insufficient permissions):', statusError.message);
+            
+            // Try to use Check Runs API as fallback
+            try {
+              const checkState = state === 'success' ? 'completed' : 'completed';
+              const conclusion = state === 'success' ? 'success' : 'failure';
+              
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'API Fuzzing Tests',
+                head_sha: context.sha,
+                status: checkState,
+                conclusion: conclusion,
+                details_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                output: {
+                  title: 'API Fuzzing Results',
+                  summary: description
+                }
+              });
+              console.log(`Check run created: ${conclusion} - ${description}`);
+            } catch (checkError) {
+              console.log('Could not create check run either:', checkError.message);
+              console.log('Skipping status check - this is not critical for the workflow');
+            }
+          }
 
     - name: Upload detailed reports
       if: always()

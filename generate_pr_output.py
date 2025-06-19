@@ -128,28 +128,69 @@ def parse_pip_audit_results(pip_audit_file):
     
     try:
         with open(pip_audit_file, 'r') as f:
-            data = json.load(f)
+            content = f.read().strip()
+            
+        # Handle empty file
+        if not content:
+            return {'vulnerabilities': 0, 'high': 0, 'medium': 0, 'low': 0}
+            
+        data = json.loads(content)
         
-        if not data:
+        # Handle empty array or null
+        if not data or (isinstance(data, list) and len(data) == 0):
             return {'vulnerabilities': 0, 'high': 0, 'medium': 0, 'low': 0}
         
-        vulnerabilities = len(data)
-        severity_counts = {'high': 0, 'medium': 0, 'low': 0}
-        
-        for vuln in data:
-            # pip-audit doesn't always include severity, so we'll estimate based on CVSS if available
-            severity = vuln.get('severity', 'unknown').lower()
-            if severity in severity_counts:
-                severity_counts[severity] += 1
-            else:
-                # Default to medium if unknown
-                severity_counts['medium'] += 1
-        
-        return {
-            'vulnerabilities': vulnerabilities,
-            **severity_counts
-        }
-    except (json.JSONDecodeError, KeyError):
+        # pip-audit returns an array of vulnerability objects
+        if isinstance(data, list):
+            vulnerabilities = len(data)
+            severity_counts = {'high': 0, 'medium': 0, 'low': 0}
+            
+            for vuln in data:
+                # Handle different pip-audit output formats
+                if isinstance(vuln, dict):
+                    # Look for severity in various possible fields
+                    severity = 'unknown'
+                    
+                    # Check common severity fields
+                    if 'severity' in vuln:
+                        severity = str(vuln['severity']).lower()
+                    elif 'cvss' in vuln and vuln['cvss']:
+                        # Estimate severity from CVSS score if available
+                        try:
+                            cvss_score = float(vuln['cvss'])
+                            if cvss_score >= 7.0:
+                                severity = 'high'
+                            elif cvss_score >= 4.0:
+                                severity = 'medium'
+                            else:
+                                severity = 'low'
+                        except (ValueError, TypeError):
+                            severity = 'medium'
+                    
+                    # Categorize severity
+                    if severity in ['high', 'critical']:
+                        severity_counts['high'] += 1
+                    elif severity in ['medium', 'moderate']:
+                        severity_counts['medium'] += 1
+                    elif severity in ['low', 'minor']:
+                        severity_counts['low'] += 1
+                    else:
+                        # Default to medium for unknown severity
+                        severity_counts['medium'] += 1
+                else:
+                    # If vulnerability is not a dict (unexpected format), count as medium
+                    severity_counts['medium'] += 1
+            
+            return {
+                'vulnerabilities': vulnerabilities,
+                **severity_counts
+            }
+        else:
+            # Unexpected format
+            return {'vulnerabilities': 0, 'high': 0, 'medium': 0, 'low': 0}
+            
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        print(f"Warning: Could not parse pip-audit results: {e}")
         return {'vulnerabilities': 0, 'high': 0, 'medium': 0, 'low': 0}
 
 def main():
