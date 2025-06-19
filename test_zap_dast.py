@@ -170,6 +170,9 @@ class ZAPDastTester:
         try:
             print("Generating ZAP reports...")
             
+            # Get alerts once to avoid potential issues with multiple calls
+            alerts = self.zap.core.alerts()  # Call with no parameters for all alerts
+                
             # Generate HTML report
             html_report = self.zap.core.htmlreport()
             with open(self.reports_dir / "zap-report.html", 'w') as f:
@@ -180,10 +183,10 @@ class ZAPDastTester:
                 "scan_summary": {
                     "target_url": self.target_url,
                     "scan_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "total_alerts": len(self.zap.core.alerts())
+                    "total_alerts": len(alerts)
                 },
-                "alerts": self.zap.core.alerts(),
-                "sites": self.zap.core.sites(),
+                "alerts": alerts,
+                "sites": self.zap.core.sites,
                 **scan_results
             }
             
@@ -209,7 +212,8 @@ class ZAPDastTester:
     def print_summary(self) -> None:
         """Print scan summary"""
         try:
-            alerts = self.zap.core.alerts()
+            # Get alerts consistently
+            alerts = self.zap.core.alerts()  # Call with no parameters for all alerts
             
             if not alerts:
                 print("\n🎉 No security vulnerabilities found!")
