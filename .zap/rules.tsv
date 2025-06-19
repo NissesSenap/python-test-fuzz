@@ -1,0 +1,13 @@
+# ZAP Baseline Scan Rules Configuration
+# This file controls which alerts are ignored or have their risk level modified
+
+# Format: rule_id	action	description
+# Actions: IGNORE, INFO, WARN, FAIL
+# Leave empty to use default rules
+
+# Example rules:
+# 10021	IGNORE	X-Content-Type-Options Header Missing
+# 10020	WARN	X-Frame-Options Header Missing
+# 10016	INFO	Web Browser XSS Protection Not Enabled
+
+# Uncomment and modify rules as needed for your application

@@ -6,3 +6,5 @@ requests
 pytest==8.3.4
 pytest-html==4.1.1
 email-validator
+zaproxy==0.4.0
+pyyaml==6.0.2
