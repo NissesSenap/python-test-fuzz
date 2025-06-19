@@ -202,15 +202,15 @@ async def get_order(order_id: int = Path(..., ge=1)):
     return orders[order_id]
 
 # Complex endpoint with multiple parameters
-@app.post("/complex-endpoint", tags=["Complex"])
+@app.post("/complex-endpoint/{path_param}", tags=["Complex"])
 async def complex_endpoint(
+    path_param: int = Path(..., ge=1),
     string_param: str = Body(..., min_length=1, max_length=100),
     number_param: int = Body(..., ge=1, le=1000),
     optional_param: Optional[str] = Body(None),
     list_param: List[str] = Body(..., min_items=1, max_items=10),
     nested_object: Dict[str, Any] = Body(...),
-    query_param: str = Query(..., min_length=1),
-    path_param: int = Path(..., ge=1)
+    query_param: str = Query(..., min_length=1)
 ):
     """Complex endpoint with various parameter types for comprehensive testing"""
     return {
