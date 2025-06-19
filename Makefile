@@ -1,6 +1,6 @@
 # Simplified Makefile for Security and Quality Checks
 
-.PHONY: help bandit pip-audit ruff zap-scan zap-start zap-stop zap-status verify-reports all clean
+.PHONY: help bandit pip-audit ruff zap-scan zap-baseline zap-start zap-stop zap-status verify-reports all clean
 .DEFAULT_GOAL := help
 
 # Variables
@@ -64,21 +64,37 @@ zap-scan: ## Run ZAP DAST scan against the API
 	@echo $$! > server.pid
 	@echo "$(BLUE)Waiting for API to be ready...$(NC)"
 	@timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1)
-	@echo "$(BLUE)Running ZAP DAST scan...$(NC)"
-	@if command -v docker > /dev/null; then \
-		docker run -v $(PWD):/zap/wrk/:rw -t zaproxy/zap-baseline:latest \
-			zap-baseline.py -t http://host.docker.internal:8000 \
-			-J $(REPORTS_DIR)/zap-report.json \
-			-r $(REPORTS_DIR)/zap-report.html \
-			-I || true; \
-	else \
-		echo "$(YELLOW)Docker not available, trying with local ZAP installation...$(NC)"; \
-		./zap-manage.sh apiscan http://localhost:8000 || true; \
-	fi
+	@echo "$(BLUE)Ensuring ZAP daemon is running...$(NC)"
+	@./zap-manage.sh start || true
+	@echo "$(BLUE)Running ZAP DAST scan via daemon...$(NC)"
+	@./zap-manage.sh apiscan http://localhost:8000 || true
 	@echo "$(BLUE)Stopping FastAPI server...$(NC)"
 	@if [ -f server.pid ]; then kill $$(cat server.pid) || true; rm server.pid; fi
 	@pkill -f "uvicorn main:app" || true
 	@echo "$(GREEN)✓ ZAP DAST scan completed$(NC)"
+
+zap-baseline: ## Run ZAP baseline scan (standalone container)
+	@echo "$(GREEN)Running ZAP baseline scan...$(NC)"
+	@mkdir -p $(REPORTS_DIR)
+	@echo "$(BLUE)Starting FastAPI server for scanning...$(NC)"
+	@$(PYTHON) -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+	@echo $$! > server.pid
+	@echo "$(BLUE)Waiting for API to be ready...$(NC)"
+	@timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1)
+	@echo "$(BLUE)Running ZAP baseline scan...$(NC)"
+	@if command -v docker > /dev/null; then \
+		docker run -v $(PWD)/$(REPORTS_DIR):/zap/wrk/:rw -t zaproxy/zap-baseline:latest \
+			zap-baseline.py -t http://host.docker.internal:8000 \
+			-J zap-report.json \
+			-r zap-report.html \
+			-I || true; \
+	else \
+		echo "$(YELLOW)Docker not available for baseline scan$(NC)"; \
+	fi
+	@echo "$(BLUE)Stopping FastAPI server...$(NC)"
+	@if [ -f server.pid ]; then kill $$(cat server.pid) || true; rm server.pid; fi
+	@pkill -f "uvicorn main:app" || true
+	@echo "$(GREEN)✓ ZAP baseline scan completed$(NC)"
 
 verify-reports: ## Run generate_pr_output.py to verify report generation
 	@echo "$(GREEN)Verifying report generation...$(NC)"
