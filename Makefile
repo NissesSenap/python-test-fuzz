@@ -56,7 +56,7 @@ zap-status: ## Check ZAP daemon status
 	@echo "$(GREEN)Checking ZAP status...$(NC)"
 	./zap-manage.sh status
 
-zap-scan: zap-start ## Run ZAP DAST scan against the API
+zap-scan: ## Run ZAP DAST scan against the API (without restarting ZAP)
 	@echo "$(GREEN)Running ZAP DAST scan...$(NC)"
 	@mkdir -p $(REPORTS_DIR)
 	@echo "$(BLUE)Checking if API is already running...$(NC)"
@@ -71,8 +71,14 @@ zap-scan: zap-start ## Run ZAP DAST scan against the API
 		echo "$(BLUE)Waiting for API to be ready...$(NC)"; \
 		timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1); \
 	fi
-	@echo "$(BLUE)Ensuring ZAP daemon is running...$(NC)"
-	@./zap-manage.sh fullscan http://localhost:8000 || true
+	@echo "$(BLUE)Checking ZAP daemon status...$(NC)"
+	@if ./zap-manage.sh status > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ ZAP daemon is already running$(NC)"; \
+		./zap-manage.sh fullscan http://localhost:8000 || true; \
+	else \
+		echo "$(BLUE)Starting ZAP daemon and running fullscan...$(NC)"; \
+		./zap-manage.sh start && ./zap-manage.sh fullscan http://localhost:8000 || true; \
+	fi
 	@if [ -f server.pid ]; then \
 		echo "$(BLUE)Stopping FastAPI server we started...$(NC)"; \
 		kill $$(cat server.pid) || true; \
@@ -80,7 +86,7 @@ zap-scan: zap-start ## Run ZAP DAST scan against the API
 	fi
 	@echo "$(GREEN)✓ ZAP DAST scan completed$(NC)"
 
-zap-baseline: ## Run ZAP baseline scan via daemon
+zap-baseline: ## Run ZAP baseline scan via daemon (without restarting ZAP)
 	@echo "$(GREEN)Running ZAP baseline scan via daemon...$(NC)"
 	@mkdir -p $(REPORTS_DIR)
 	@echo "$(BLUE)Checking if API is already running...$(NC)"
@@ -95,8 +101,14 @@ zap-baseline: ## Run ZAP baseline scan via daemon
 		echo "$(BLUE)Waiting for API to be ready...$(NC)"; \
 		timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1); \
 	fi
-	@echo "$(BLUE)Running ZAP baseline scan via daemon...$(NC)"
-	@./zap-manage.sh baseline http://localhost:8000 || true
+	@echo "$(BLUE)Checking ZAP daemon status...$(NC)"
+	@if ./zap-manage.sh status > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ ZAP daemon is already running$(NC)"; \
+		./zap-manage.sh baseline http://localhost:8000 || true; \
+	else \
+		echo "$(BLUE)Starting ZAP daemon and running baseline scan...$(NC)"; \
+		./zap-manage.sh start && ./zap-manage.sh baseline http://localhost:8000 || true; \
+	fi
 	@if [ -f server.pid ]; then \
 		echo "$(BLUE)Stopping FastAPI server we started...$(NC)"; \
 		kill $$(cat server.pid) || true; \
