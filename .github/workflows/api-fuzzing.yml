@@ -100,8 +100,7 @@ jobs:
     - name: Check for known security vulnerabilities with pip-audit
       run: |
         mkdir -p reports
-        pip-audit --format=json --output=reports/pip-audit-report.json || true
-        pip-audit --format=text
+        pip-audit --format=markdown --output=reports/pip-audit-report.md || true
       continue-on-error: true
     
     - name: Upload security reports
