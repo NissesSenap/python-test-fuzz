@@ -23,7 +23,18 @@ class ZAPDastTester:
         self.reports_dir = Path("reports")
         self.reports_dir.mkdir(exist_ok=True)
         
-        self.zap = ZAPv2(proxies=f"localhost:{zap_proxy_port}", apikey=self.zap_api_key)
+        # ZAP API client - connect to ZAP daemon API
+        if zap_proxy_port != 8080:
+            # Use custom port
+            self.zap = ZAPv2(
+                apikey=self.zap_api_key, 
+                proxies={
+                    'http': f'http://localhost:{zap_proxy_port}', 
+                }
+            )
+        else:
+            # Use default port 8080
+            self.zap = ZAPv2(apikey=self.zap_api_key)
         
     def wait_for_api(self, max_attempts: int = 30) -> bool:
         """Wait for the FastAPI server to be ready"""
@@ -241,6 +252,11 @@ class ZAPDastTester:
         try:
             # Create new session
             self.zap.core.new_session(name="FastAPI_DAST_Scan", overwrite=True)
+            
+            # Access target URL so ZAP has something to work with
+            print(f"Accessing target {self.target_url}")
+            self.zap.urlopen(self.target_url)
+            time.sleep(2)  # Give the sites tree a chance to get updated
             
             # Get and import OpenAPI spec
             openapi_spec = self.get_openapi_spec()
