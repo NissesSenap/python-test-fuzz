@@ -61,7 +61,22 @@ start_zap_daemon() {
         # Check if ZAP container is already running
         if docker ps --format 'table {{.Names}}' | grep -q "zap-daemon"; then
             log_warning "ZAP daemon container is already running"
-            return 0
+            # Check if it's running on the correct port
+            container_port=$(docker port zap-daemon 2>/dev/null | grep "$ZAP_PORT" || echo "")
+            if [ -n "$container_port" ]; then
+                log_info "Container is running on the correct port $ZAP_PORT"
+                return 0
+            else
+                log_warning "Container is running on a different port. Stopping and restarting..."
+                docker stop zap-daemon >/dev/null 2>&1 || true
+                docker rm zap-daemon >/dev/null 2>&1 || true
+            fi
+        else
+            # Check if container exists but is stopped
+            if docker ps -a --format 'table {{.Names}}' | grep -q "zap-daemon"; then
+                log_info "Removing existing stopped ZAP container..."
+                docker rm zap-daemon >/dev/null 2>&1 || true
+            fi
         fi
         
         # Start ZAP in daemon mode using Docker
@@ -231,7 +246,7 @@ show_help() {
     echo "  help                Show this help message"
     echo ""
     echo "Environment Variables:"
-    echo "  ZAP_PORT           ZAP proxy port (default: 8080)"
+    echo "  ZAP_PORT           ZAP proxy port (default: 9090)"
     echo "  ZAP_HOST           ZAP host (default: 127.0.0.1)"
     echo "  ZAP_MEMORY         ZAP memory allocation (default: 1024m)"
     echo ""
