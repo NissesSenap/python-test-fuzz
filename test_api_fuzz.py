@@ -4,7 +4,6 @@ Pytest-based API fuzzing tests using schemathesis
 """
 
 import pytest
-import schemathesis
 import requests
 from schemathesis.checks import not_a_server_error
 from schemathesis.openapi import from_url
