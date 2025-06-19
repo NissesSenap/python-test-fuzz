@@ -14,15 +14,15 @@ from zapv2 import ZAPv2
 
 
 class ZAPDastTester:
-    def __init__(self, target_url: str = "http://localhost:8000", zap_proxy_port: int = 8080):
+    def __init__(self, target_url: str = "http://localhost:8080", zap_proxy_port: int = 9090):
         self.target_url = target_url
         self.zap_proxy_port = zap_proxy_port
         self.zap_proxy_url = f"http://localhost:{zap_proxy_port}"
         self.reports_dir = Path("reports")
         self.reports_dir.mkdir(exist_ok=True)
         
-        # ZAP API client
-        self.zap = ZAPv2(proxies={'http': self.zap_proxy_url, 'https': self.zap_proxy_url})
+        # ZAP API client - connect to ZAP daemon
+        self.zap = ZAPv2(proxies=None)
         
     def wait_for_api(self, max_attempts: int = 30) -> bool:
         """Wait for the FastAPI server to be ready"""
@@ -49,7 +49,7 @@ class ZAPDastTester:
         for attempt in range(max_attempts):
             try:
                 # Test ZAP API endpoint
-                response = requests.get(f"{self.zap_proxy_url}", timeout=5)
+                response = requests.get(f"{self.zap_proxy_url}/JSON/core/view/version/", timeout=5)
                 if response.status_code == 200:
                     version_info = response.json()
                     print(f"✓ ZAP proxy is ready - Version: {version_info.get('version', 'Unknown')}")
