@@ -7,13 +7,13 @@ import pytest
 import schemathesis
 import requests
 from schemathesis.checks import not_a_server_error
-from schemathesis.specs.openapi.checks import response_schema_conformance, status_code_conformance
+from schemathesis.openapi import from_url
 
 # URL of the running FastAPI application
 API_BASE_URL = "http://localhost:8000"
 
 # Load the schema once for all tests
-schema = schemathesis.from_uri(f"{API_BASE_URL}/openapi.json")
+schema = from_url(f"{API_BASE_URL}/openapi.json")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -49,15 +49,8 @@ class TestAPIFuzzing:
         # Execute the API call
         response = case.call()
         
-        # Run comprehensive checks
-        case.validate_response(
-            response,
-            checks=(
-                not_a_server_error,           # No 5xx errors
-                response_schema_conformance,   # Response matches schema
-                status_code_conformance,       # Status code is documented
-            )
-        )
+        # Run comprehensive checks (v4 runs all available checks by default)
+        case.validate_response(response)
 
     @schema.parametrize()
     def test_api_response_times(self, case):
@@ -71,9 +64,13 @@ class TestAPIFuzzing:
         # Basic validation
         case.validate_response(response, checks=(not_a_server_error,))
 
-    @schema.parametrize(endpoint="/users")
+    @schema.parametrize()
     def test_users_endpoint_specific(self, case):
         """Specific tests for users endpoint"""
+        # Only run this test for users endpoints
+        if "/users" not in case.path:
+            pytest.skip("Not a users endpoint")
+            
         response = case.call()
         
         # Users endpoint specific checks
@@ -89,9 +86,13 @@ class TestAPIFuzzing:
         
         case.validate_response(response, checks=(not_a_server_error,))
 
-    @schema.parametrize(endpoint="/products")
+    @schema.parametrize()
     def test_products_endpoint_specific(self, case):
         """Specific tests for products endpoint"""
+        # Only run this test for products endpoints
+        if "/products" not in case.path:
+            pytest.skip("Not a products endpoint")
+            
         response = case.call()
         
         # Products endpoint specific checks
@@ -107,9 +108,13 @@ class TestAPIFuzzing:
         
         case.validate_response(response, checks=(not_a_server_error,))
 
-    @schema.parametrize(endpoint="/orders", method="POST")
+    @schema.parametrize()
     def test_orders_creation(self, case):
         """Specific tests for order creation"""
+        # Only run this test for POST requests to orders endpoints
+        if "/orders" not in case.path or case.method != "POST":
+            pytest.skip("Not a POST request to orders endpoint")
+            
         response = case.call()
         
         # Order creation specific checks
