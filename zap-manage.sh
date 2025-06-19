@@ -193,7 +193,7 @@ run_api_scan() {
     log_info "Running custom API DAST scan..."
     
     # Ensure ZAP daemon is running
-    if ! curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" >/dev/null 2>&1; then
+    if ! curl -s "http://$ZAP_HOST:$ZAP_PORT" >/dev/null 2>&1; then
         log_info "ZAP daemon not running. Starting it..."
         start_zap_daemon
     fi
@@ -208,12 +208,12 @@ show_status() {
     log_info "ZAP Status Check"
     echo "=================="
     
-    if curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" >/dev/null 2>&1; then
-        version=$(curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" | python -c "import sys, json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "Unknown")
+    if curl -s "http://$ZAP_HOST:$ZAP_PORT" >/dev/null 2>&1; then
+        version=$(curl -s "http://$ZAP_HOST:$ZAP_PORT" | python -c "import sys, json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "Unknown")
         log_success "ZAP is running on port $ZAP_PORT (Version: $version)"
         
         # Show sites in ZAP
-        sites=$(curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/sites/" 2>/dev/null)
+        sites=$(curl -s "http://$ZAP_HOST:$ZAP_PORT" 2>/dev/null)
         if [ "$sites" != '{"sites":[]}' ]; then
             log_info "Sites in ZAP session:"
             echo "$sites" | python -c "import sys, json; [print(f'  - {site}') for site in json.load(sys.stdin)['sites']]" 2>/dev/null || echo "  (Could not parse sites)"

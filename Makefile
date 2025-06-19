@@ -56,7 +56,7 @@ zap-status: ## Check ZAP daemon status
 	@echo "$(GREEN)Checking ZAP status...$(NC)"
 	./zap-manage.sh status
 
-zap-scan: ## Run ZAP DAST scan against the API
+zap-scan: zap-start ## Run ZAP DAST scan against the API
 	@echo "$(GREEN)Running ZAP DAST scan...$(NC)"
 	@mkdir -p $(REPORTS_DIR)
 	@echo "$(BLUE)Starting FastAPI server for scanning...$(NC)"
@@ -65,8 +65,6 @@ zap-scan: ## Run ZAP DAST scan against the API
 	@echo "$(BLUE)Waiting for API to be ready...$(NC)"
 	@timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1)
 	@echo "$(BLUE)Ensuring ZAP daemon is running...$(NC)"
-	@./zap-manage.sh start || true
-	@echo "$(BLUE)Running ZAP DAST scan via daemon...$(NC)"
 	@./zap-manage.sh apiscan http://localhost:8000 || true
 	@echo "$(BLUE)Stopping FastAPI server...$(NC)"
 	@if [ -f server.pid ]; then kill $$(cat server.pid) || true; rm server.pid; fi
