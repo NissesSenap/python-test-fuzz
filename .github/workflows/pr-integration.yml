@@ -1,0 +1,219 @@
+name: API Fuzzing with PR Integration
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  statuses: write
+
+jobs:
+  api-fuzzing-with-pr:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.13
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install bandit pip-audit pytest-json-report
+
+    - name: Start FastAPI server
+      run: |
+        python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+        echo $! > server.pid
+        timeout 30 bash -c 'until curl -f http://localhost:8000/health; do sleep 1; done'
+      env:
+        PYTHONPATH: .
+
+    - name: Run API fuzzing tests with JSON report
+      run: |
+        mkdir -p reports
+        python -m pytest test_api_fuzz.py::TestAPIFuzzing::test_api_fuzzing_basic \
+          --json-report --json-report-file=reports/pytest-results.json \
+          --tb=short \
+          --maxfail=10 \
+          -v
+      env:
+        PYTHONPATH: .
+      continue-on-error: true  # Don't fail the workflow, we want to report results
+
+    - name: Run security scan
+      run: |
+        mkdir -p reports
+        
+        # Run bandit
+        bandit -r . -f json -o reports/bandit-report.json -x .venv,venv || true
+        
+        # Run pip-audit  
+        pip-audit --format=json --output=reports/pip-audit-report.json || true
+      continue-on-error: true
+
+    - name: Generate GitHub Actions Summary
+      if: always()
+      run: |
+        python generate_pr_output.py summary reports/pytest-results.json reports/pip-audit-report.json
+
+    - name: Generate PR Comment
+      if: always() && github.event_name == 'pull_request'
+      run: |
+        python generate_pr_output.py comment reports/pytest-results.json reports/pip-audit-report.json
+
+    - name: Post PR Comment
+      if: always() && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          try {
+            const comment = fs.readFileSync('pr-comment.md', 'utf8');
+            
+            // Look for existing comment from this workflow
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.data.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('API Fuzzing Results')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+          } catch (error) {
+            console.log('Could not post PR comment:', error);
+          }
+
+    - name: Set PR Status Check
+      if: always() && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          let state = 'success';
+          let description = 'All API fuzzing tests passed';
+          
+          try {
+            // Check test results
+            if (fs.existsSync('reports/pytest-results.json')) {
+              const testResults = JSON.parse(fs.readFileSync('reports/pytest-results.json', 'utf8'));
+              const failed = testResults.summary?.failed || 0;
+              
+              if (failed > 0) {
+                state = 'failure';
+                description = `${failed} API fuzzing tests failed`;
+              }
+            }
+            
+            // Check security results
+            if (fs.existsSync('reports/pip-audit-report.json')) {
+              const secResults = JSON.parse(fs.readFileSync('reports/pip-audit-report.json', 'utf8'));
+              if (secResults && secResults.length > 0) {
+                if (state === 'success') {
+                  state = 'failure';
+                  description = `${secResults.length} security vulnerabilities found`;
+                } else {
+                  description += ` and ${secResults.length} security vulnerabilities found`;
+                }
+              }
+            }
+          } catch (error) {
+            console.log('Error reading results:', error);
+            state = 'error';
+            description = 'Could not determine test results';
+          }
+          
+          try {
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: state,
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              description: description,
+              context: 'API Fuzzing Tests'
+            });
+            console.log(`Status check set: ${state} - ${description}`);
+          } catch (statusError) {
+            console.log('Could not set commit status (insufficient permissions):', statusError.message);
+            
+            // Try to use Check Runs API as fallback
+            try {
+              const checkState = state === 'success' ? 'completed' : 'completed';
+              const conclusion = state === 'success' ? 'success' : 'failure';
+              
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'API Fuzzing Tests',
+                head_sha: context.sha,
+                status: checkState,
+                conclusion: conclusion,
+                details_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                output: {
+                  title: 'API Fuzzing Results',
+                  summary: description
+                }
+              });
+              console.log(`Check run created: ${conclusion} - ${description}`);
+            } catch (checkError) {
+              console.log('Could not create check run either:', checkError.message);
+              console.log('Skipping status check - this is not critical for the workflow');
+            }
+          }
+
+    - name: Upload detailed reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: detailed-reports
+        path: reports/
+        retention-days: 7
+
+    - name: Stop FastAPI server
+      if: always()
+      run: |
+        if [ -f server.pid ]; then
+          kill $(cat server.pid) || true
+          rm server.pid
+        fi
+        pkill -f "uvicorn main:app" || true

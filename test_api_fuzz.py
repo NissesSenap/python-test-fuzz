@@ -291,21 +291,3 @@ def pytest_collection_modifyitems(config, items):
         # Mark schemathesis tests as potentially slow
         if "schemathesis" in str(item.function):
             item.add_marker(pytest.mark.slow)
-
-
-if __name__ == "__main__":
-    # Run with pytest when executed directly
-    import subprocess
-    import sys
-    
-    # Run pytest with nice output
-    cmd = [
-        sys.executable, "-m", "pytest", 
-        __file__, 
-        "-v",  # Verbose output
-        "--tb=short",  # Short traceback format
-        "--durations=10",  # Show 10 slowest tests
-    ]
-    
-    result = subprocess.run(cmd)
-    sys.exit(result.returncode)
