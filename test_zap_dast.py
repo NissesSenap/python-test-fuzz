@@ -7,12 +7,9 @@ This script performs security testing on the FastAPI application using OWASP ZAP
 import json
 import time
 import requests
-import subprocess
 import sys
-import os
 from pathlib import Path
-from typing import Dict, List, Optional
-import yaml
+from typing import Dict, Optional
 from zapv2 import ZAPv2
 
 
