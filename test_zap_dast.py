@@ -8,21 +8,22 @@ import json
 import time
 import requests
 import sys
+import os
 from pathlib import Path
 from typing import Dict, Optional
 from zapv2 import ZAPv2
 
 
 class ZAPDastTester:
-    def __init__(self, target_url: str = "http://localhost:9090", zap_proxy_port: int = 9090):
+    def __init__(self, target_url: str = "http://localhost:8000", zap_proxy_port: int = 9090):
         self.target_url = target_url
         self.zap_proxy_port = zap_proxy_port
         self.zap_proxy_url = f"http://localhost:{zap_proxy_port}"
+        self.zap_api_key = os.getenv("ZAP_API_KEY", "zap-api-key-12345")
         self.reports_dir = Path("reports")
         self.reports_dir.mkdir(exist_ok=True)
         
-        # ZAP API client - connect to ZAP daemon
-        self.zap = ZAPv2(proxies=None)
+        self.zap = ZAPv2(proxies=f"localhost:{zap_proxy_port}", apikey=self.zap_api_key)
         
     def wait_for_api(self, max_attempts: int = 30) -> bool:
         """Wait for the FastAPI server to be ready"""
@@ -43,7 +44,7 @@ class ZAPDastTester:
         return False
     
     def wait_for_zap(self, max_attempts: int = 30) -> bool:
-        return True
+       return True
     
     def get_openapi_spec(self) -> Optional[Dict]:
         """Fetch OpenAPI specification from the FastAPI application"""
