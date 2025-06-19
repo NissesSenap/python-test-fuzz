@@ -38,6 +38,17 @@ jobs:
         pip install -r requirements.txt
         pip install bandit pip-audit pytest-json-report
 
+    - name: Set up ZAP
+      run: |
+        # Download and set up ZAP
+        wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2_14_0_unix.sh -O zap_installer.sh
+        chmod +x zap_installer.sh
+        sudo ./zap_installer.sh -q -overwrite
+        sudo ln -sf /opt/zaproxy/zap.sh /usr/local/bin/zap.sh
+        
+        # Make zap-manage.sh executable
+        chmod +x ./zap-manage.sh
+
     - name: Start FastAPI server
       run: |
         python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
@@ -69,15 +80,37 @@ jobs:
         pip-audit --format=json --output=reports/pip-audit-report.json || true
       continue-on-error: true
 
+    - name: Start ZAP daemon
+      run: |
+        # Start ZAP daemon
+        ./zap-manage.sh start
+        
+        # Wait for ZAP to be ready
+        timeout 60 bash -c 'until curl -f http://127.0.0.1:8080/JSON/core/view/version/; do sleep 2; done'
+      continue-on-error: true
+
+    - name: Run ZAP DAST scan
+      run: |
+        # Run ZAP DAST scan using the Python script
+        python test_zap_dast.py --target http://localhost:8000 --zap-port 8080
+      env:
+        PYTHONPATH: .
+      continue-on-error: true
+
+    - name: Stop ZAP daemon
+      if: always()
+      run: |
+        ./zap-manage.sh stop || true
+
     - name: Generate GitHub Actions Summary
       if: always()
       run: |
-        python generate_pr_output.py summary reports/pytest-results.json reports/pip-audit-report.json
+        python generate_pr_output.py summary reports/pytest-results.json reports/pip-audit-report.json reports/bandit-report.json reports/zap-report.json
 
     - name: Generate PR Comment
       if: always() && github.event_name == 'pull_request'
       run: |
-        python generate_pr_output.py comment reports/pytest-results.json reports/pip-audit-report.json
+        python generate_pr_output.py comment reports/pytest-results.json reports/pip-audit-report.json reports/bandit-report.json reports/zap-report.json
 
     - name: Post PR Comment
       if: always() && github.event_name == 'pull_request'
@@ -153,6 +186,23 @@ jobs:
                   description = `${secResults.length} security vulnerabilities found`;
                 } else {
                   description += ` and ${secResults.length} security vulnerabilities found`;
+                }
+              }
+            }
+            
+            // Check ZAP DAST results
+            if (fs.existsSync('reports/zap-report.json')) {
+              const zapResults = JSON.parse(fs.readFileSync('reports/zap-report.json', 'utf8'));
+              const zapAlerts = zapResults.alerts || [];
+              const highRiskAlerts = zapAlerts.filter(alert => alert.risk === 'High').length;
+              const mediumRiskAlerts = zapAlerts.filter(alert => alert.risk === 'Medium').length;
+              
+              if (highRiskAlerts > 0 || mediumRiskAlerts > 0) {
+                if (state === 'success') {
+                  state = 'failure';
+                  description = `${highRiskAlerts + mediumRiskAlerts} DAST security issues found`;
+                } else {
+                  description += ` and ${highRiskAlerts + mediumRiskAlerts} DAST security issues found`;
                 }
               }
             }
