@@ -110,7 +110,7 @@ start_zap_daemon() {
     
     # Wait for ZAP to be ready
     log_info "Waiting for ZAP to be ready..."
-    for i in {1..30}; do
+    for i in {1..60}; do
         if curl -s "http://$ZAP_HOST:$ZAP_PORT" >/dev/null 2>&1; then
             log_success "ZAP is ready!"
             return 0
