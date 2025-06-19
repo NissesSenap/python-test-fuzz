@@ -49,7 +49,7 @@ class ZAPDastTester:
         for attempt in range(max_attempts):
             try:
                 # Test ZAP API endpoint
-                response = requests.get(f"{self.zap_proxy_url}/JSON/core/view/version/", timeout=5)
+                response = requests.get(f"{self.zap_proxy_url}", timeout=5)
                 if response.status_code == 200:
                     version_info = response.json()
                     print(f"✓ ZAP proxy is ready - Version: {version_info.get('version', 'Unknown')}")

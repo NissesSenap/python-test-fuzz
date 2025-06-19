@@ -111,7 +111,7 @@ start_zap_daemon() {
     # Wait for ZAP to be ready
     log_info "Waiting for ZAP to be ready..."
     for i in {1..60}; do
-        if curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" >/dev/null 2>&1; then
+        if curl -s "http://$ZAP_HOST:$ZAP_PORT/" >/dev/null 2>&1; then
             log_success "ZAP is ready!"
             return 0
         fi
@@ -145,7 +145,7 @@ ensure_zap_daemon_running() {
     log_info "Ensuring ZAP daemon is running..."
     
     # Check if ZAP daemon is accessible
-    if curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" >/dev/null 2>&1; then
+    if curl -s "http://$ZAP_HOST:$ZAP_PORT/" >/dev/null 2>&1; then
         log_success "ZAP daemon is already running and accessible on port $ZAP_PORT"
         return 0
     fi
@@ -210,8 +210,8 @@ show_status() {
     log_info "ZAP Status Check"
     echo "=================="
     
-    if curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" >/dev/null 2>&1; then
-        version=$(curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" | python -c "import sys, json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "Unknown")
+    if curl -s "http://$ZAP_HOST:$ZAP_PORT/" >/dev/null 2>&1; then
+        version=$(curl -s "http://$ZAP_HOST:$ZAP_PORT/" | python -c "import sys, json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "Unknown")
         log_success "ZAP is running on port $ZAP_PORT (Version: $version)"
         
         # Show sites in ZAP
