@@ -19,7 +19,7 @@ class ZAPDastTester:
         self.target_url = target_url
         self.zap_proxy_port = zap_proxy_port
         self.zap_proxy_url = f"http://localhost:{zap_proxy_port}"
-        self.zap_api_key = os.getenv("ZAP_API_KEY", "zap-api-key-12345")
+        self.zap_api_key = os.getenv("ZAP_API_KEY", None)
         self.reports_dir = Path("reports")
         self.reports_dir.mkdir(exist_ok=True)
         
