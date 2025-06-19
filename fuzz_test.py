@@ -29,9 +29,8 @@ def run_basic_fuzz():
     # Configure test settings
     results = []
     
-    @schema.parametrize()
-    def test_api(case):
-        """Test case for API fuzzing"""
+    def test_case_handler(case):
+        """Handle individual test cases"""
         try:
             # Send the request
             response = case.call()
@@ -56,8 +55,20 @@ def run_basic_fuzz():
             })
             # Don't raise the exception to continue testing
     
-    # Run the test
-    test_api()
+    # Iterate through all operations and generate test cases
+    for operation in schema.get_all_operations():
+        try:
+            # Generate a few test cases for each operation
+            for _ in range(3):  # Generate 3 test cases per operation
+                case = operation.make_case()
+                test_case_handler(case)
+        except Exception as e:
+            results.append({
+                'method': getattr(operation, 'method', 'UNKNOWN'),
+                'path': getattr(operation, 'path', 'UNKNOWN'),
+                'error': f"Case generation failed: {str(e)}",
+                'success': False
+            })
     
     return results
 
