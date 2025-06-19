@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-ZAP_PORT=${ZAP_PORT:-8080}
+ZAP_PORT=${ZAP_PORT:-9090}
 ZAP_HOST=${ZAP_HOST:-127.0.0.1}
 ZAP_MEMORY=${ZAP_MEMORY:-1024m}
 REPORTS_DIR="reports"
