@@ -10,6 +10,7 @@ app = FastAPI(
     description="A sample API for testing schemathesis fuzzing",
     version="1.0.0",
 )
+app.openapi_version = "3.0.0"
 
 # Pydantic models for request/response validation
 class UserRole(str, Enum):
@@ -108,7 +109,7 @@ async def create_user(user: UserCreate):
         name=user.name,
         email=user.email,
         age=user.age,
-        role=user.role,
+        role=user.role or UserRole.user,
         created_at=datetime.now()
     )
     users[user_id] = new_user
