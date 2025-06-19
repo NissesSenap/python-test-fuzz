@@ -17,7 +17,7 @@ class ZAPDastTester:
     def __init__(self, target_url: str = "http://localhost:8000", zap_proxy_port: int = 8080):
         self.target_url = target_url
         self.zap_proxy_port = zap_proxy_port
-        self.zap_proxy_url = f"http://127.0.0.1:{zap_proxy_port}"
+        self.zap_proxy_url = f"http://localhost:{zap_proxy_port}"
         self.reports_dir = Path("reports")
         self.reports_dir.mkdir(exist_ok=True)
         
