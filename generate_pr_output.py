@@ -33,23 +33,37 @@ def generate_job_summary(test_results, security_results):
     
     total_issues = security_results.get('total_issues', 0)
     if total_issues == 0:
-        summary += "✅ **No security issues found**\n\n"
+        summary += "✅ **No security issues found across all tools**\n\n"
     else:
-        summary += f"⚠️ **{total_issues} security issues found**\n\n"
-        
-        # Break down by type
-        vulnerabilities = security_results.get('vulnerabilities', 0)
-        code_issues = security_results.get('code_issues', 0)
-        dast_issues = security_results.get('dast_issues', 0)
-        
-        if vulnerabilities > 0:
-            summary += f"- 🔍 **Dependencies**: {vulnerabilities} vulnerabilities\n"
-        if code_issues > 0:
-            summary += f"- 📝 **Code Issues**: {code_issues} security issues\n"
-        if dast_issues > 0:
-            summary += f"- 🛡️ **DAST Scan**: {dast_issues} security issues\n"
-        
-        summary += "\n**Severity Breakdown:**\n"
+        summary += f"⚠️ **{total_issues} total security issues found**\n\n"
+    
+    # Dependency vulnerabilities (pip-audit)
+    vulnerabilities = security_results.get('vulnerabilities', 0)
+    summary += "### 🔍 Dependency Vulnerabilities (pip-audit)\n"
+    if vulnerabilities == 0:
+        summary += "✅ No dependency vulnerabilities found\n\n"
+    else:
+        summary += f"❌ **{vulnerabilities} dependency vulnerabilities found**\n\n"
+    
+    # Code security issues (bandit)
+    code_issues = security_results.get('code_issues', 0)
+    summary += "### 📝 Code Security Issues (bandit)\n"
+    if code_issues == 0:
+        summary += "✅ No code security issues found\n\n"
+    else:
+        summary += f"❌ **{code_issues} code security issues found**\n\n"
+    
+    # DAST security issues (ZAP)
+    dast_issues = security_results.get('dast_issues', 0)
+    summary += "### 🛡️ DAST Security Issues (ZAP)\n"
+    if dast_issues == 0:
+        summary += "✅ No DAST security issues found\n\n"
+    else:
+        summary += f"❌ **{dast_issues} DAST security issues found**\n\n"
+    
+    # Overall severity breakdown
+    if total_issues > 0:
+        summary += "### 📊 Overall Severity Breakdown\n"
         if security_results.get('high', 0) > 0:
             summary += f"- 🔴 **High**: {security_results['high']}\n"
         if security_results.get('medium', 0) > 0:
@@ -58,29 +72,39 @@ def generate_job_summary(test_results, security_results):
             summary += f"- 🟢 **Low**: {security_results['low']}\n"
         if security_results.get('informational', 0) > 0:
             summary += f"- ℹ️ **Info**: {security_results['informational']}\n"
+        summary += "\n"
     
     # Add recommendations
     if test_results.get('failed', 0) > 0 or security_results.get('total_issues', 0) > 0:
         summary += "\n## 🔧 Recommendations\n\n"
         
         if test_results.get('failed', 0) > 0:
+            summary += "### 🧪 Test Issues\n"
             summary += "- Review failing tests and fix API issues\n"
-            summary += "- Check server logs for detailed error information\n"
+            summary += "- Check server logs for detailed error information\n\n"
         
         if security_results.get('vulnerabilities', 0) > 0:
+            summary += "### 🔍 Dependency Security (pip-audit)\n"
             summary += "- Update vulnerable dependencies using pip-audit recommendations\n"
+            summary += "- Consider using dependency pinning and regular security updates\n\n"
         
         if security_results.get('code_issues', 0) > 0:
+            summary += "### 📝 Code Security (bandit)\n"
             summary += "- Review and fix code security issues identified by bandit\n"
             summary += "- Consider implementing secure coding practices\n"
+            summary += "- Use security linting in your IDE or pre-commit hooks\n\n"
         
         if security_results.get('dast_issues', 0) > 0:
+            summary += "### 🛡️ Runtime Security (ZAP DAST)\n"
             summary += "- Review and fix DAST security issues identified by ZAP\n"
             summary += "- Check API endpoints for security vulnerabilities\n"
             summary += "- Implement proper input validation and security headers\n"
+            summary += "- Consider implementing rate limiting and authentication\n\n"
         
         if security_results.get('total_issues', 0) > 0:
+            summary += "### 📋 General Security\n"
             summary += "- Review detailed security scan reports for specific remediation steps\n"
+            summary += "- Consider implementing a security review process\n"
     
     return summary
 
@@ -111,28 +135,41 @@ def generate_pr_comment(test_results, security_results, pr_number):
 | ⏭️ Skipped | {test_results.get('skipped', 0)} |
 | ⏱️ Duration | {test_results.get('duration', 'N/A')} |
 
-### 🔒 Security Scan
+### 🔒 Security Scan Results
 """
     
+    total_issues = security_results.get('total_issues', 0)
     if total_issues == 0:
-        comment += "✅ No security issues detected\n"
+        comment += "✅ No security issues detected across all tools\n\n"
     else:
-        comment += f"⚠️ {total_issues} security issues found:\n\n"
+        comment += f"⚠️ {total_issues} total security issues found\n\n"
         
-        # Break down by type
+        # Dependency vulnerabilities (pip-audit)
         vulnerabilities = security_results.get('vulnerabilities', 0)
+        comment += "#### 🔍 Dependency Vulnerabilities (pip-audit)\n"
+        if vulnerabilities == 0:
+            comment += "✅ No dependency vulnerabilities\n\n"
+        else:
+            comment += f"❌ **{vulnerabilities}** dependency vulnerabilities found\n\n"
+        
+        # Code security issues (bandit)
         code_issues = security_results.get('code_issues', 0)
+        comment += "#### 📝 Code Security Issues (bandit)\n"
+        if code_issues == 0:
+            comment += "✅ No code security issues\n\n"
+        else:
+            comment += f"❌ **{code_issues}** code security issues found\n\n"
+        
+        # DAST security issues (ZAP)
         dast_issues = security_results.get('dast_issues', 0)
+        comment += "#### �️ DAST Security Issues (ZAP)\n"
+        if dast_issues == 0:
+            comment += "✅ No DAST security issues\n\n"
+        else:
+            comment += f"❌ **{dast_issues}** DAST security issues found\n\n"
         
-        comment += "| Type | Count |\n|------|-------|\n"
-        if vulnerabilities > 0:
-            comment += f"| 🔍 Dependencies | {vulnerabilities} |\n"
-        if code_issues > 0:
-            comment += f"| 📝 Code Issues | {code_issues} |\n"
-        if dast_issues > 0:
-            comment += f"| 🛡️ DAST Scan | {dast_issues} |\n"
-        
-        comment += "\n**Severity Breakdown:**\n"
+        # Overall severity breakdown
+        comment += "#### 📊 Overall Severity Breakdown\n"
         comment += "| Severity | Count |\n|----------|-------|\n"
         if security_results.get('high', 0) > 0:
             comment += f"| 🔴 High | {security_results['high']} |\n"
@@ -142,6 +179,7 @@ def generate_pr_comment(test_results, security_results, pr_number):
             comment += f"| 🟢 Low | {security_results['low']} |\n"
         if security_results.get('informational', 0) > 0:
             comment += f"| ℹ️ Info | {security_results['informational']} |\n"
+        comment += "\n"
     
     comment += f"\n---\n*Generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}*"
     
