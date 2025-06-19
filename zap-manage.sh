@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-ZAP_PORT=${ZAP_PORT:-9090}
+ZAP_PORT=${ZAP_PORT:-8080}
 ZAP_HOST=${ZAP_HOST:-localhost}
 ZAP_MEMORY=${ZAP_MEMORY:-1024m}
 REPORTS_DIR="reports"
@@ -85,7 +85,7 @@ start_zap_daemon() {
             -p $ZAP_PORT:$ZAP_PORT \
             -v "$(pwd)/$REPORTS_DIR:/zap/wrk" \
             zaproxy/zap-stable \
-            zap.sh -daemon -host 0.0.0.0 -port $ZAP_PORT -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+            zap.sh -daemon -host 0.0.0.0 -port $ZAP_PORT -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true -config api.disablekey=true
             
         log_success "ZAP daemon started in Docker container"
     else
@@ -248,7 +248,7 @@ show_help() {
     echo "  help                Show this help message"
     echo ""
     echo "Environment Variables:"
-    echo "  ZAP_PORT           ZAP proxy port (default: 9090)"
+    echo "  ZAP_PORT           ZAP proxy port (default: 8080)"
     echo "  ZAP_HOST           ZAP host (default: localhost)"
     echo "  ZAP_MEMORY         ZAP memory allocation (default: 1024m)"
     echo ""
