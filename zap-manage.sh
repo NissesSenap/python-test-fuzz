@@ -249,7 +249,7 @@ show_help() {
     echo ""
     echo "Environment Variables:"
     echo "  ZAP_PORT           ZAP proxy port (default: 9090)"
-    echo "  ZAP_HOST           ZAP host (default: 127.0.0.1)"
+    echo "  ZAP_HOST           ZAP host (default: localhost)"
     echo "  ZAP_MEMORY         ZAP memory allocation (default: 1024m)"
     echo ""
     echo "Examples:"
