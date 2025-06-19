@@ -31,11 +31,22 @@ def generate_job_summary(test_results, security_results):
     # Security scan results
     summary += "## 🔒 Security Scan Results\n\n"
     
-    if security_results.get('vulnerabilities', 0) == 0:
-        summary += "✅ **No vulnerabilities found**\n\n"
+    total_issues = security_results.get('total_issues', 0)
+    if total_issues == 0:
+        summary += "✅ **No security issues found**\n\n"
     else:
-        summary += f"⚠️ **{security_results['vulnerabilities']} vulnerabilities found**\n\n"
+        summary += f"⚠️ **{total_issues} security issues found**\n\n"
         
+        # Break down by type
+        vulnerabilities = security_results.get('vulnerabilities', 0)
+        code_issues = security_results.get('code_issues', 0)
+        
+        if vulnerabilities > 0:
+            summary += f"- 🔍 **Dependencies**: {vulnerabilities} vulnerabilities\n"
+        if code_issues > 0:
+            summary += f"- 📝 **Code Issues**: {code_issues} security issues\n"
+        
+        summary += "\n**Severity Breakdown:**\n"
         if security_results.get('high', 0) > 0:
             summary += f"- 🔴 **High**: {security_results['high']}\n"
         if security_results.get('medium', 0) > 0:
@@ -44,7 +55,7 @@ def generate_job_summary(test_results, security_results):
             summary += f"- 🟢 **Low**: {security_results['low']}\n"
     
     # Add recommendations
-    if test_results.get('failed', 0) > 0 or security_results.get('vulnerabilities', 0) > 0:
+    if test_results.get('failed', 0) > 0 or security_results.get('total_issues', 0) > 0:
         summary += "\n## 🔧 Recommendations\n\n"
         
         if test_results.get('failed', 0) > 0:
@@ -52,8 +63,14 @@ def generate_job_summary(test_results, security_results):
             summary += "- Check server logs for detailed error information\n"
         
         if security_results.get('vulnerabilities', 0) > 0:
-            summary += "- Update vulnerable dependencies\n"
-            summary += "- Review security scan report for details\n"
+            summary += "- Update vulnerable dependencies using pip-audit recommendations\n"
+        
+        if security_results.get('code_issues', 0) > 0:
+            summary += "- Review and fix code security issues identified by bandit\n"
+            summary += "- Consider implementing secure coding practices\n"
+        
+        if security_results.get('total_issues', 0) > 0:
+            summary += "- Review detailed security scan reports for specific remediation steps\n"
     
     return summary
 
@@ -61,7 +78,8 @@ def generate_pr_comment(test_results, security_results, pr_number):
     """Generate PR comment content"""
     
     # Determine overall status
-    if test_results.get('failed', 0) == 0 and security_results.get('vulnerabilities', 0) == 0:
+    total_issues = security_results.get('total_issues', 0)
+    if test_results.get('failed', 0) == 0 and total_issues == 0:
         status_emoji = "✅"
         status_text = "All checks passed!"
     elif test_results.get('failed', 0) > 0:
@@ -86,10 +104,22 @@ def generate_pr_comment(test_results, security_results, pr_number):
 ### 🔒 Security Scan
 """
     
-    if security_results.get('vulnerabilities', 0) == 0:
-        comment += "✅ No vulnerabilities detected\n"
+    if total_issues == 0:
+        comment += "✅ No security issues detected\n"
     else:
-        comment += f"⚠️ {security_results['vulnerabilities']} vulnerabilities found:\n\n"
+        comment += f"⚠️ {total_issues} security issues found:\n\n"
+        
+        # Break down by type
+        vulnerabilities = security_results.get('vulnerabilities', 0)
+        code_issues = security_results.get('code_issues', 0)
+        
+        comment += "| Type | Count |\n|------|-------|\n"
+        if vulnerabilities > 0:
+            comment += f"| 🔍 Dependencies | {vulnerabilities} |\n"
+        if code_issues > 0:
+            comment += f"| 📝 Code Issues | {code_issues} |\n"
+        
+        comment += "\n**Severity Breakdown:**\n"
         comment += "| Severity | Count |\n|----------|-------|\n"
         if security_results.get('high', 0) > 0:
             comment += f"| 🔴 High | {security_results['high']} |\n"
@@ -193,22 +223,92 @@ def parse_pip_audit_results(pip_audit_file):
         print(f"Warning: Could not parse pip-audit results: {e}")
         return {'vulnerabilities': 0, 'high': 0, 'medium': 0, 'low': 0}
 
+def parse_bandit_results(bandit_file):
+    """Parse bandit results from JSON output"""
+    if not Path(bandit_file).exists():
+        return {'issues': 0, 'high': 0, 'medium': 0, 'low': 0}
+    
+    try:
+        with open(bandit_file, 'r') as f:
+            content = f.read().strip()
+            
+        # Handle empty file
+        if not content:
+            return {'issues': 0, 'high': 0, 'medium': 0, 'low': 0}
+            
+        data = json.loads(content)
+        
+        # Handle empty or invalid data
+        if not data or not isinstance(data, dict):
+            return {'issues': 0, 'high': 0, 'medium': 0, 'low': 0}
+        
+        # Bandit JSON structure: {"results": [...], "metrics": {...}}
+        results = data.get('results', [])
+        if not results:
+            return {'issues': 0, 'high': 0, 'medium': 0, 'low': 0}
+        
+        issues = len(results)
+        severity_counts = {'high': 0, 'medium': 0, 'low': 0}
+        
+        for issue in results:
+            if isinstance(issue, dict):
+                # Bandit uses 'issue_severity' field
+                severity = issue.get('issue_severity', 'MEDIUM').upper()
+                
+                if severity in ['HIGH', 'CRITICAL']:
+                    severity_counts['high'] += 1
+                elif severity in ['MEDIUM', 'MODERATE']:
+                    severity_counts['medium'] += 1
+                elif severity in ['LOW', 'MINOR', 'INFO']:
+                    severity_counts['low'] += 1
+                else:
+                    # Default to medium for unknown severity
+                    severity_counts['medium'] += 1
+            else:
+                # If issue is not a dict (unexpected format), count as medium
+                severity_counts['medium'] += 1
+        
+        return {
+            'issues': issues,
+            **severity_counts
+        }
+        
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        print(f"Warning: Could not parse bandit results: {e}")
+        return {'issues': 0, 'high': 0, 'medium': 0, 'low': 0}
+
+def combine_security_results(pip_audit_results, bandit_results):
+    """Combine pip-audit and bandit results into unified security summary"""
+    return {
+        'total_issues': pip_audit_results.get('vulnerabilities', 0) + bandit_results.get('issues', 0),
+        'vulnerabilities': pip_audit_results.get('vulnerabilities', 0),
+        'code_issues': bandit_results.get('issues', 0),
+        'high': pip_audit_results.get('high', 0) + bandit_results.get('high', 0),
+        'medium': pip_audit_results.get('medium', 0) + bandit_results.get('medium', 0),
+        'low': pip_audit_results.get('low', 0) + bandit_results.get('low', 0),
+    }
+
 def main():
     """Main function to generate PR outputs"""
     
     # Parse command line arguments
     if len(sys.argv) < 2:
-        print("Usage: python generate_pr_output.py <action> [pytest_results.json] [pip_audit_results.json]")
+        print("Usage: python generate_pr_output.py <action> [pytest_results.json] [pip_audit_results.json] [bandit_results.json]")
         print("Actions: summary, comment")
         sys.exit(1)
     
     action = sys.argv[1]
     pytest_file = sys.argv[2] if len(sys.argv) > 2 else "reports/pytest-results.json"
     pip_audit_file = sys.argv[3] if len(sys.argv) > 3 else "reports/pip-audit-report.json"
+    bandit_file = sys.argv[4] if len(sys.argv) > 4 else "reports/bandit-report.json"
     
     # Parse test results
     test_results = parse_pytest_results(pytest_file)
-    security_results = parse_pip_audit_results(pip_audit_file)
+    pip_audit_results = parse_pip_audit_results(pip_audit_file)
+    bandit_results = parse_bandit_results(bandit_file)
+    
+    # Combine security results
+    security_results = combine_security_results(pip_audit_results, bandit_results)
     
     if action == "summary":
         # Generate job summary
