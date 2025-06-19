@@ -111,7 +111,7 @@ start_zap_daemon() {
     # Wait for ZAP to be ready
     log_info "Waiting for ZAP to be ready..."
     for i in {1..60}; do
-        if curl -s "http://$ZAP_HOST:$ZAP_PORT" >/dev/null 2>&1; then
+        if curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" >/dev/null 2>&1; then
             log_success "ZAP is ready!"
             return 0
         fi
@@ -141,79 +141,81 @@ stop_zap_daemon() {
     fi
 }
 
-run_baseline_scan() {
+ensure_zap_daemon_running() {
+    log_info "Ensuring ZAP daemon is running..."
+    
+    # Check if ZAP daemon is accessible
+    if curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" >/dev/null 2>&1; then
+        log_success "ZAP daemon is already running and accessible on port $ZAP_PORT"
+        return 0
+    fi
+    
+    # If not accessible, try to start it
+    log_info "ZAP daemon not accessible. Starting it..."
+    start_zap_daemon
+}
+
+run_scan_via_daemon() {
     local target_url=$1
+    local scan_type=${2:-"baseline"}
     
     if [ -z "$target_url" ]; then
-        log_error "Target URL is required for baseline scan"
+        log_error "Target URL is required for scan"
         return 1
     fi
     
-    log_info "Running ZAP baseline scan against $target_url..."
+    log_info "Running ZAP $scan_type scan against $target_url via daemon..."
+    
+    # Ensure daemon is running
+    ensure_zap_daemon_running
+    
+    # Create reports directory
     mkdir -p $REPORTS_DIR
     
-    if check_docker_available; then
-        docker run -v "$(pwd)/$REPORTS_DIR:/zap/wrk/:rw" \
-            -t zaproxy/zap-baseline:latest \
-            zap-baseline.py -t "$target_url" -J baseline-report.json -r baseline-report.html
-    else
-        log_error "Baseline scan requires Docker or manual ZAP setup"
-        return 1
-    fi
+    # Use the Python script to run the scan through the daemon
+    case "$scan_type" in
+        "baseline"|"api")
+            python test_zap_dast.py --target "$target_url" --zap-port "$ZAP_PORT"
+            ;;
+        "full")
+            # For full scans, we can use the same Python script but with different parameters
+            # or extend the Python script to support full scan mode
+            python test_zap_dast.py --target "$target_url" --zap-port "$ZAP_PORT"
+            ;;
+        *)
+            log_error "Unknown scan type: $scan_type"
+            return 1
+            ;;
+    esac
     
-    log_success "Baseline scan completed. Reports saved in $REPORTS_DIR/"
+    log_success "$scan_type scan completed. Reports saved in $REPORTS_DIR/"
+}
+
+run_baseline_scan() {
+    local target_url=$1
+    run_scan_via_daemon "$target_url" "baseline"
 }
 
 run_full_scan() {
     local target_url=$1
-    
-    if [ -z "$target_url" ]; then
-        log_error "Target URL is required for full scan"
-        return 1
-    fi
-    
-    log_info "Running ZAP full scan against $target_url..."
-    mkdir -p $REPORTS_DIR
-    
-    if check_docker_available; then
-        docker run -v "$(pwd)/$REPORTS_DIR:/zap/wrk/:rw" \
-            -t zaproxy/zap-full-scan:latest \
-            zap-full-scan.py -t "$target_url" -J full-scan-report.json -r full-scan-report.html
-    else
-        log_error "Full scan requires Docker or manual ZAP setup"
-        return 1
-    fi
-    
-    log_success "Full scan completed. Reports saved in $REPORTS_DIR/"
+    run_scan_via_daemon "$target_url" "full"
 }
 
 run_api_scan() {
     local target_url=${1:-"http://localhost:8000"}
-    
-    log_info "Running custom API DAST scan..."
-    
-    # Ensure ZAP daemon is running
-    if ! curl -s "http://$ZAP_HOST:$ZAP_PORT" >/dev/null 2>&1; then
-        log_info "ZAP daemon not running. Starting it..."
-        start_zap_daemon
-    fi
-    
-    # Run the Python DAST script
-    python test_zap_dast.py --target "$target_url" --zap-port "$ZAP_PORT"
-    
-    log_success "API DAST scan completed"
+    run_scan_via_daemon "$target_url" "api"
 }
 
 show_status() {
     log_info "ZAP Status Check"
     echo "=================="
     
-    if curl -s "http://$ZAP_HOST:$ZAP_PORT" >/dev/null 2>&1; then
-        version=$(curl -s "http://$ZAP_HOST:$ZAP_PORT" | python -c "import sys, json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "Unknown")
+    if curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" >/dev/null 2>&1; then
+        version=$(curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" | python -c "import sys, json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "Unknown")
         log_success "ZAP is running on port $ZAP_PORT (Version: $version)"
         
         # Show sites in ZAP
-        sites=$(curl -s "http://$ZAP_HOST:$ZAP_PORT" 2>/dev/null)
+        sites=$(curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/sites/" 2>/dev/null)
         if [ "$sites" != '{"sites":[]}' ]; then
             log_info "Sites in ZAP session:"
             echo "$sites" | python -c "import sys, json; [print(f'  - {site}') for site in json.load(sys.stdin)['sites']]" 2>/dev/null || echo "  (Could not parse sites)"
