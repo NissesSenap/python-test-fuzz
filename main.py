@@ -21,20 +21,20 @@ class UserRole(str, Enum):
 class User(BaseModel):
     id: int = Field(..., description="User ID", ge=1)
     name: str = Field(..., description="User name", min_length=1, max_length=100)
-    email: str = Field(..., description="User email address")
+    email: EmailStr = Field(..., description="User email address")
     age: Optional[int] = Field(None, description="User age", ge=0, le=150)
     role: UserRole = Field(default=UserRole.user, description="User role")
     created_at: Optional[datetime] = Field(default=None, description="Creation timestamp")
 
 class UserCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    email: str
+    email: EmailStr
     age: Optional[int] = Field(None, ge=0, le=150)
     role: Optional[UserRole] = UserRole.user
 
 class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    email: Optional[str] = None
+    email: Optional[EmailStr] = None
     age: Optional[int] = Field(None, ge=0, le=150)
     role: Optional[UserRole] = None
 
@@ -93,7 +93,7 @@ async def get_users(
     
     return user_list[skip:skip + limit]
 
-@app.get("/users/{user_id}", response_model=User, tags=["Users"])
+@app.get("/users/{user_id}", response_model=User, tags=["Users"], responses={404: {"description": "User not found"}})
 async def get_user(user_id: int = Path(..., ge=1, description="User ID")):
     """Get a specific user by ID"""
     if user_id not in users:
@@ -115,7 +115,7 @@ async def create_user(user: UserCreate):
     users[user_id] = new_user
     return new_user
 
-@app.put("/users/{user_id}", response_model=User, tags=["Users"])
+@app.put("/users/{user_id}", response_model=User, tags=["Users"], responses={404: {"description": "User not found"}})
 async def update_user(user_id: int = Path(..., ge=1), user_update: UserUpdate = Body(...)):
     """Update an existing user"""
     if user_id not in users:
@@ -129,7 +129,7 @@ async def update_user(user_id: int = Path(..., ge=1), user_update: UserUpdate = 
     
     return existing_user
 
-@app.delete("/users/{user_id}", tags=["Users"])
+@app.delete("/users/{user_id}", tags=["Users"], responses={404: {"description": "User not found"}})
 async def delete_user(user_id: int = Path(..., ge=1)):
     """Delete a user"""
     if user_id not in users:
@@ -160,7 +160,7 @@ async def get_products(
     
     return product_list
 
-@app.get("/products/{product_id}", response_model=Product, tags=["Products"])
+@app.get("/products/{product_id}", response_model=Product, tags=["Products"], responses={404: {"description": "Product not found"}})
 async def get_product(product_id: int = Path(..., ge=1)):
     """Get a specific product by ID"""
     if product_id not in products:
@@ -168,7 +168,7 @@ async def get_product(product_id: int = Path(..., ge=1)):
     return products[product_id]
 
 # Order endpoints
-@app.post("/orders", response_model=Order, status_code=201, tags=["Orders"])
+@app.post("/orders", response_model=Order, status_code=201, tags=["Orders"], responses={404: {"description": "User or Product not found"}})
 async def create_order(
     user_id: int = Body(..., ge=1),
     product_ids: List[int] = Body(..., min_items=1)
@@ -176,6 +176,10 @@ async def create_order(
     """Create a new order"""
     if user_id not in users:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check for empty product list (additional validation)
+    if not product_ids:
+        raise HTTPException(status_code=422, detail="Product list cannot be empty")
     
     # Validate all products exist
     for product_id in product_ids:
@@ -195,7 +199,7 @@ async def create_order(
     orders[order_id] = new_order
     return new_order
 
-@app.get("/orders/{order_id}", response_model=Order, tags=["Orders"])
+@app.get("/orders/{order_id}", response_model=Order, tags=["Orders"], responses={404: {"description": "Order not found"}})
 async def get_order(order_id: int = Path(..., ge=1)):
     """Get a specific order by ID"""
     if order_id not in orders:
