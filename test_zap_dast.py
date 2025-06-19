@@ -15,7 +15,7 @@ from zapv2 import ZAPv2
 
 
 class ZAPDastTester:
-    def __init__(self, target_url: str = "http://localhost:8000", zap_proxy_port: int = 9090):
+    def __init__(self, target_url: str = "http://localhost:8000", zap_proxy_port: int = 8080):
         self.target_url = target_url
         self.zap_proxy_port = zap_proxy_port
         self.zap_proxy_url = f"http://localhost:{zap_proxy_port}"
@@ -24,17 +24,11 @@ class ZAPDastTester:
         self.reports_dir.mkdir(exist_ok=True)
         
         # ZAP API client - connect to ZAP daemon API
-        if zap_proxy_port != 8080:
-            # Use custom port
-            self.zap = ZAPv2(
-                apikey=self.zap_api_key, 
-                proxies={
-                    'http': f'http://localhost:{zap_proxy_port}', 
-                }
-            )
-        else:
-            # Use default port 8080
-            self.zap = ZAPv2(apikey=self.zap_api_key)
+        self.zap = ZAPv2(
+            proxies={
+                'http': f'http://localhost:{zap_proxy_port}', 
+            }
+        )
         
     def wait_for_api(self, max_attempts: int = 30) -> bool:
         """Wait for the FastAPI server to be ready"""
@@ -295,7 +289,7 @@ def main():
     
     parser = argparse.ArgumentParser(description="Run OWASP ZAP DAST tests")
     parser.add_argument("--target", default="http://localhost:8000", help="Target URL")
-    parser.add_argument("--zap-port", type=int, default=9090, help="ZAP proxy port")
+    parser.add_argument("--zap-port", type=int, default=8080, help="ZAP proxy port")
     parser.add_argument("--baseline-only", action="store_true", help="Run only baseline scan")
     
     args = parser.parse_args()
