@@ -59,31 +59,49 @@ zap-status: ## Check ZAP daemon status
 zap-scan: zap-start ## Run ZAP DAST scan against the API
 	@echo "$(GREEN)Running ZAP DAST scan...$(NC)"
 	@mkdir -p $(REPORTS_DIR)
-	@echo "$(BLUE)Starting FastAPI server for scanning...$(NC)"
-	@$(PYTHON) -m uvicorn main:app --host 0.0.0.0 --port 8000 &
-	@echo $$! > server.pid
-	@echo "$(BLUE)Waiting for API to be ready...$(NC)"
-	@timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1)
+	@echo "$(BLUE)Checking if API is already running...$(NC)"
+	@if curl -f http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ API is already running on port 8000$(NC)"; \
+		SERVER_WAS_RUNNING=true; \
+	else \
+		echo "$(BLUE)Starting FastAPI server for scanning...$(NC)"; \
+		$(PYTHON) -m uvicorn main:app --host 0.0.0.0 --port 8000 & \
+		echo $$! > server.pid; \
+		SERVER_WAS_RUNNING=false; \
+		echo "$(BLUE)Waiting for API to be ready...$(NC)"; \
+		timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1); \
+	fi
 	@echo "$(BLUE)Ensuring ZAP daemon is running...$(NC)"
 	@./zap-manage.sh fullscan http://localhost:8000 || true
-	@echo "$(BLUE)Stopping FastAPI server...$(NC)"
-	@if [ -f server.pid ]; then kill $$(cat server.pid) || true; rm server.pid; fi
-	@pkill -f "uvicorn main:app" || true
+	@if [ -f server.pid ]; then \
+		echo "$(BLUE)Stopping FastAPI server we started...$(NC)"; \
+		kill $$(cat server.pid) || true; \
+		rm server.pid; \
+	fi
 	@echo "$(GREEN)✓ ZAP DAST scan completed$(NC)"
 
 zap-baseline: ## Run ZAP baseline scan via daemon
 	@echo "$(GREEN)Running ZAP baseline scan via daemon...$(NC)"
 	@mkdir -p $(REPORTS_DIR)
-	@echo "$(BLUE)Starting FastAPI server for scanning...$(NC)"
-	@$(PYTHON) -m uvicorn main:app --host 0.0.0.0 --port 8000 &
-	@echo $$! > server.pid
-	@echo "$(BLUE)Waiting for API to be ready...$(NC)"
-	@timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1)
+	@echo "$(BLUE)Checking if API is already running...$(NC)"
+	@if curl -f http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ API is already running on port 8000$(NC)"; \
+		SERVER_WAS_RUNNING=true; \
+	else \
+		echo "$(BLUE)Starting FastAPI server for scanning...$(NC)"; \
+		$(PYTHON) -m uvicorn main:app --host 0.0.0.0 --port 8000 & \
+		echo $$! > server.pid; \
+		SERVER_WAS_RUNNING=false; \
+		echo "$(BLUE)Waiting for API to be ready...$(NC)"; \
+		timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1); \
+	fi
 	@echo "$(BLUE)Running ZAP baseline scan via daemon...$(NC)"
 	@./zap-manage.sh baseline http://localhost:8000 || true
-	@echo "$(BLUE)Stopping FastAPI server...$(NC)"
-	@if [ -f server.pid ]; then kill $$(cat server.pid) || true; rm server.pid; fi
-	@pkill -f "uvicorn main:app" || true
+	@if [ -f server.pid ]; then \
+		echo "$(BLUE)Stopping FastAPI server we started...$(NC)"; \
+		kill $$(cat server.pid) || true; \
+		rm server.pid; \
+	fi
 	@echo "$(GREEN)✓ ZAP baseline scan completed$(NC)"
 
 verify-reports: ## Run generate_pr_output.py to verify report generation
