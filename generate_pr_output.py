@@ -56,8 +56,8 @@ def generate_job_summary(test_results, security_results):
             summary += f"- 🟡 **Medium**: {security_results['medium']}\n"
         if security_results.get('low', 0) > 0:
             summary += f"- 🟢 **Low**: {security_results['low']}\n"
-        if security_results.get('info', 0) > 0:
-            summary += f"- ℹ️ **Info**: {security_results['info']}\n"
+        if security_results.get('informational', 0) > 0:
+            summary += f"- ℹ️ **Info**: {security_results['informational']}\n"
     
     # Add recommendations
     if test_results.get('failed', 0) > 0 or security_results.get('total_issues', 0) > 0:
@@ -140,8 +140,8 @@ def generate_pr_comment(test_results, security_results, pr_number):
             comment += f"| 🟡 Medium | {security_results['medium']} |\n"
         if security_results.get('low', 0) > 0:
             comment += f"| 🟢 Low | {security_results['low']} |\n"
-        if security_results.get('info', 0) > 0:
-            comment += f"| ℹ️ Info | {security_results['info']} |\n"
+        if security_results.get('informational', 0) > 0:
+            comment += f"| ℹ️ Info | {security_results['informational']} |\n"
     
     comment += f"\n---\n*Generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}*"
     
@@ -293,9 +293,9 @@ def parse_bandit_results(bandit_file):
         return {'issues': 0, 'high': 0, 'medium': 0, 'low': 0}
 
 def parse_zap_results(zap_file):
-    """Parse ZAP DAST results from JSON output"""
+    """Parse ZAP baseline results from JSON output"""
     if not Path(zap_file).exists():
-        return {'dast_issues': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+        return {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
     
     try:
         with open(zap_file, 'r') as f:
@@ -303,50 +303,62 @@ def parse_zap_results(zap_file):
             
         # Handle empty file
         if not content:
-            return {'dast_issues': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+            return {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
             
         data = json.loads(content)
         
         # Handle empty or invalid data
         if not data or not isinstance(data, dict):
-            return {'dast_issues': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+            return {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
         
-        # ZAP JSON structure: {"alerts": [...], "scan_summary": {...}}
-        alerts = data.get('alerts', [])
+        # ZAP baseline JSON structure varies, but typically has 'alerts' or 'site' arrays
+        alerts = []
+        
+        # Try different possible structures
+        if 'alerts' in data:
+            alerts = data['alerts']
+        elif 'site' in data and isinstance(data['site'], list):
+            # Extract alerts from site structure
+            for site in data['site']:
+                if 'alerts' in site:
+                    alerts.extend(site['alerts'])
+        elif isinstance(data, list):
+            # Sometimes the root is an array of alerts
+            alerts = data
+        
         if not alerts:
-            return {'dast_issues': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+            return {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
         
-        issues = len(alerts)
-        severity_counts = {'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+        severity_counts = {'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
         
         for alert in alerts:
             if isinstance(alert, dict):
-                # ZAP uses 'risk' field with values: High, Medium, Low, Informational
-                risk = alert.get('risk', 'Medium').lower()
+                # ZAP uses 'risk' field for severity
+                risk = alert.get('risk', '').upper()
                 
-                if risk in ['high', 'critical']:
+                if risk in ['HIGH', 'CRITICAL']:
                     severity_counts['high'] += 1
-                elif risk in ['medium', 'moderate']:
+                elif risk in ['MEDIUM', 'MODERATE']:
                     severity_counts['medium'] += 1
-                elif risk in ['low', 'minor']:
+                elif risk in ['LOW', 'MINOR']:
                     severity_counts['low'] += 1
-                elif risk in ['informational', 'info']:
-                    severity_counts['info'] += 1
+                elif risk in ['INFORMATIONAL', 'INFO']:
+                    severity_counts['informational'] += 1
                 else:
-                    # Default to medium for unknown risk
-                    severity_counts['medium'] += 1
+                    # Default to informational for unknown risk
+                    severity_counts['informational'] += 1
             else:
-                # If alert is not a dict (unexpected format), count as medium
-                severity_counts['medium'] += 1
+                # If alert is not a dict (unexpected format), count as informational
+                severity_counts['informational'] += 1
         
         return {
-            'dast_issues': issues,
+            'alerts': len(alerts),
             **severity_counts
         }
         
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         print(f"Warning: Could not parse ZAP results: {e}")
-        return {'dast_issues': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}
+        return {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
 
 def combine_security_results(pip_audit_results, bandit_results, zap_results=None):
     """Combine pip-audit, bandit, and ZAP results into unified security summary"""

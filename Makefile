@@ -65,7 +65,16 @@ zap-scan: ## Run ZAP DAST scan against the API
 	@echo "$(BLUE)Waiting for API to be ready...$(NC)"
 	@timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1)
 	@echo "$(BLUE)Running ZAP DAST scan...$(NC)"
-	@./zap-manage.sh apiscan http://localhost:8000 || true
+	@if command -v docker > /dev/null; then \
+		docker run -v $(PWD):/zap/wrk/:rw -t zaproxy/zap-baseline:latest \
+			zap-baseline.py -t http://host.docker.internal:8000 \
+			-J $(REPORTS_DIR)/zap-report.json \
+			-r $(REPORTS_DIR)/zap-report.html \
+			-I || true; \
+	else \
+		echo "$(YELLOW)Docker not available, trying with local ZAP installation...$(NC)"; \
+		./zap-manage.sh apiscan http://localhost:8000 || true; \
+	fi
 	@echo "$(BLUE)Stopping FastAPI server...$(NC)"
 	@if [ -f server.pid ]; then kill $$(cat server.pid) || true; rm server.pid; fi
 	@pkill -f "uvicorn main:app" || true
@@ -74,8 +83,8 @@ zap-scan: ## Run ZAP DAST scan against the API
 verify-reports: ## Run generate_pr_output.py to verify report generation
 	@echo "$(GREEN)Verifying report generation...$(NC)"
 	@mkdir -p $(REPORTS_DIR)
-	$(PYTHON) generate_pr_output.py summary $(REPORTS_DIR)/pytest-results.json $(REPORTS_DIR)/pip-audit-report.json $(REPORTS_DIR)/bandit-report.json || true
-	$(PYTHON) generate_pr_output.py comment $(REPORTS_DIR)/pytest-results.json $(REPORTS_DIR)/pip-audit-report.json $(REPORTS_DIR)/bandit-report.json || true
+	$(PYTHON) generate_pr_output.py summary $(REPORTS_DIR)/pytest-results.json $(REPORTS_DIR)/pip-audit-report.json $(REPORTS_DIR)/bandit-report.json $(REPORTS_DIR)/zap-report.json || true
+	$(PYTHON) generate_pr_output.py comment $(REPORTS_DIR)/pytest-results.json $(REPORTS_DIR)/pip-audit-report.json $(REPORTS_DIR)/bandit-report.json $(REPORTS_DIR)/zap-report.json || true
 	@echo "$(GREEN)✓ Report verification completed$(NC)"
 
 all: bandit pip-audit ruff zap-scan verify-reports ## Run all security scans, linting, and report verification
