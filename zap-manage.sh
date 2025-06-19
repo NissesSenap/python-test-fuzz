@@ -7,7 +7,7 @@ set -e
 
 # Configuration
 ZAP_PORT=${ZAP_PORT:-9090}
-ZAP_HOST=${ZAP_HOST:-127.0.0.1}
+ZAP_HOST=${ZAP_HOST:-localhost}
 ZAP_MEMORY=${ZAP_MEMORY:-1024m}
 REPORTS_DIR="reports"
 
@@ -111,7 +111,7 @@ start_zap_daemon() {
     # Wait for ZAP to be ready
     log_info "Waiting for ZAP to be ready..."
     for i in {1..30}; do
-        if curl -s "http://$ZAP_HOST:$ZAP_PORT/JSON/core/view/version/" >/dev/null 2>&1; then
+        if curl -s "http://$ZAP_HOST:$ZAP_PORT" >/dev/null 2>&1; then
             log_success "ZAP is ready!"
             return 0
         fi
