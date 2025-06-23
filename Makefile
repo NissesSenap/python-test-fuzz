@@ -116,6 +116,21 @@ zap-baseline: ## Run ZAP baseline scan via daemon (without restarting ZAP)
 	fi
 	@echo "$(GREEN)✓ ZAP baseline scan completed$(NC)"
 
+upload-to-defectdojo: ## Upload ZAP scan results to DefectDojo
+	@echo "$(GREEN)Uploading ZAP scan results to DefectDojo...$(NC)"
+	@if [ ! -f $(REPORTS_DIR)/zap-report.xml ]; then \
+		echo "$(RED)✗ ZAP report not found. Run 'make zap-scan' first$(NC)"; \
+		exit 1; \
+	fi
+	@if [ -z "$(DEFECTDOJO_API_KEY)" ]; then \
+		echo "$(YELLOW)Warning: DEFECTDOJO_API_KEY not set. Using .env file if available$(NC)"; \
+		if [ -f .env ]; then \
+			set -a && . ./.env && set +a; \
+		fi; \
+	fi
+	$(PYTHON) defect.py
+	@echo "$(GREEN)✓ Upload to DefectDojo completed$(NC)"
+
 zap-baseline-ci: ## Run ZAP baseline scan for CI (assumes server is already running)
 	@echo "$(GREEN)Running ZAP baseline scan for CI...$(NC)"
 	@mkdir -p $(REPORTS_DIR)
@@ -143,7 +158,7 @@ verify-reports: ## Run generate_pr_output.py to verify report generation
 	$(PYTHON) generate_pr_output.py comment $(REPORTS_DIR)/pytest-results.json $(REPORTS_DIR)/pip-audit-report.json $(REPORTS_DIR)/bandit-report.json $(REPORTS_DIR)/zap-report.json || true
 	@echo "$(GREEN)✓ Report verification completed$(NC)"
 
-all: bandit pip-audit ruff zap-scan verify-reports ## Run all security scans, linting, and report verification
+all: bandit pip-audit ruff zap-scan upload-to-defectdojo verify-reports ## Run all security scans, upload to DefectDojo, and verify reports
 
 clean: ## Clean up generated reports
 	@echo "$(GREEN)Cleaning up reports...$(NC)"
