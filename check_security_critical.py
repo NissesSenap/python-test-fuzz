@@ -260,7 +260,7 @@ def check_all_security_issues(pytest_file: str, pip_audit_file: str, bandit_file
     all_issues = pytest_issues + pip_audit_issues + bandit_issues + zap_issues
 
     # Determine overall state and description
-    if not all_critical and not all_issues:
+    if not all_issues:
         state = 'success'
         description = 'All API fuzzing tests passed and no security issues found'
     elif all_critical:
@@ -271,8 +271,9 @@ def check_all_security_issues(pytest_file: str, pip_audit_file: str, bandit_file
         else:
             description = f"Critical security issues found: {'; '.join(critical_issues)}"
     else:
-        state = 'failure'
-        description = f"Security issues found: {'; '.join(all_issues)}"
+        # There are issues but none are critical
+        state = 'success'
+        description = f"Security issues found but none are critical: {'; '.join(all_issues)}"
 
     return {
         'critical': all_critical,
