@@ -71,13 +71,37 @@ jobs:
         pip-audit --format=json --output=reports/pip-audit-report.json || true
       continue-on-error: true
 
+    - name: Cache ZAP Docker image
+      id: cache-zap
+      uses: actions/cache@v4
+      with:
+        path: /tmp/zap-image.tar
+        key: zap-docker-image-${{ runner.os }}-stable
+        restore-keys: |
+          zap-docker-image-${{ runner.os }}-
+
+    - name: Setup ZAP for DAST scanning
+      id: setup-zap
+      run: |
+        # Load cached Docker image if available
+        if [ -f /tmp/zap-image.tar ]; then
+          echo "Loading ZAP Docker image from cache..."
+          docker load -i /tmp/zap-image.tar
+        else
+          echo "Pulling ZAP Docker image..."
+          docker pull zaproxy/zap-stable
+          # Save image to cache
+          echo "Saving ZAP Docker image to cache..."
+          docker save -o /tmp/zap-image.tar zaproxy/zap-stable
+        fi
+
     - name: Run ZAP Baseline scan (Makefile)
       run: |
         # Use CI-specific target that assumes server is already running
         # and doesn't try to manage the server lifecycle
         make zap-baseline-ci
       continue-on-error: true
-      need: start_server
+      need: [start_server, setup-zap]
 
     - name: Generate GitHub Actions Summary
       if: always()
