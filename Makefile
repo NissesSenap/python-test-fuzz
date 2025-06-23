@@ -116,6 +116,26 @@ zap-baseline: ## Run ZAP baseline scan via daemon (without restarting ZAP)
 	fi
 	@echo "$(GREEN)✓ ZAP baseline scan completed$(NC)"
 
+zap-baseline-ci: ## Run ZAP baseline scan for CI (assumes server is already running)
+	@echo "$(GREEN)Running ZAP baseline scan for CI...$(NC)"
+	@mkdir -p $(REPORTS_DIR)
+	@echo "$(BLUE)Verifying API is running on port 8000...$(NC)"
+	@if curl -f http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ API is running on port 8000$(NC)"; \
+	else \
+		echo "$(RED)✗ API is not running on port 8000$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Checking ZAP daemon status...$(NC)"
+	@if ./zap-manage.sh status > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ ZAP daemon is already running$(NC)"; \
+		./zap-manage.sh baseline http://localhost:8000 || true; \
+	else \
+		echo "$(BLUE)Starting ZAP daemon and running baseline scan...$(NC)"; \
+		./zap-manage.sh start && ./zap-manage.sh baseline http://localhost:8000 || true; \
+	fi
+	@echo "$(GREEN)✓ ZAP baseline scan completed$(NC)"
+
 verify-reports: ## Run generate_pr_output.py to verify report generation
 	@echo "$(GREEN)Verifying report generation...$(NC)"
 	@mkdir -p $(REPORTS_DIR)

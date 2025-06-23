@@ -71,7 +71,9 @@ jobs:
 
     - name: Run ZAP Baseline scan (Makefile)
       run: |
-        make zap-baseline
+        # Use CI-specific target that assumes server is already running
+        # and doesn't try to manage the server lifecycle
+        make zap-baseline-ci
       continue-on-error: true
 
     - name: Generate GitHub Actions Summary
