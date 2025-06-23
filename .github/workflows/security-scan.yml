@@ -9,7 +9,7 @@ on:
 jobs:
   security-scan:
     runs-on: ubuntu-latest
-    
+
     services:
       zap:
         image: owasp/zap2docker-stable
@@ -20,36 +20,36 @@ jobs:
           --user root
           --entrypoint /bin/bash
           -c "zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true"
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-    
+
     - name: Start FastAPI server
       run: |
         python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
         sleep 10
         curl -f http://localhost:8000/health
-    
+
     - name: Wait for ZAP to be ready
       run: |
         timeout 60 bash -c 'until curl -f http://localhost:8080/JSON/core/view/version/; do sleep 2; done'
-    
+
     - name: Run security scans
       run: |
         make bandit
         make pip-audit
         make ruff
-        
+
     - name: Run ZAP DAST scan
       run: |
         # Use ZAP baseline scan for faster CI execution
@@ -62,7 +62,7 @@ jobs:
         curl "http://localhost:8080/OTHER/core/other/xmlreport/" > reports/zap-report.xml
         curl "http://localhost:8080/OTHER/core/other/jsonreport/" > reports/zap-report.json
         curl "http://localhost:8080/OTHER/core/other/htmlreport/" > reports/zap-report.html
-    
+
     - name: Upload to DefectDojo
       env:
         DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
@@ -73,7 +73,7 @@ jobs:
       run: |
         python defect.py
       continue-on-error: true
-    
+
     - name: Upload scan reports
       uses: actions/upload-artifact@v4
       if: always()
@@ -81,7 +81,7 @@ jobs:
         name: security-reports
         path: reports/
         retention-days: 30
-    
+
     - name: Generate PR comment
       if: github.event_name == 'pull_request'
       run: |

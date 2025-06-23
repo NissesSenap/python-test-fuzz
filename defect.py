@@ -41,13 +41,13 @@ class DefectDojoClient:
             },
             timeout=30.0,
         )
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.client.close()
-    
+
     def _request(self, method: str, endpoint: str, **kwargs):
         """Make HTTP request to DefectDojo API"""
         try:
@@ -60,12 +60,12 @@ class DefectDojoClient:
         except Exception as e:
             print(f"❌ Request failed: {e}")
             raise
-    
+
     def get_products(self, name: str = None):
         """Get products, optionally filtered by name"""
         params = {"name": name} if name else {}
         return self._request("GET", "/products/", params=params)
-    
+
     def create_product(self, name: str, description: str = "", prod_type: int = 1):
         """Create a new product"""
         data = {
@@ -74,14 +74,14 @@ class DefectDojoClient:
             "prod_type": prod_type
         }
         return self._request("POST", "/products/", json=data)
-    
+
     def get_engagements(self, product_id: int = None):
         """Get engagements, optionally filtered by product"""
         params = {"product": product_id} if product_id else {}
         return self._request("GET", "/engagements/", params=params)
-    
-    def create_engagement(self, name: str, product_id: int, lead: int, 
-                         status: str = "In Progress", 
+
+    def create_engagement(self, name: str, product_id: int, lead: int,
+                         status: str = "In Progress",
                          target_start: str = None, target_end: str = None,
                          description: str = ""):
         """Create a new engagement"""
@@ -96,14 +96,14 @@ class DefectDojoClient:
             "target_end": target_end or today,
         }
         return self._request("POST", "/engagements/", json=data)
-    
-    def import_scan(self, scan_type: str, file_path: str, engagement_id: int, 
-                   lead: int = None, scan_date: str = None, active: bool = True, 
+
+    def import_scan(self, scan_type: str, file_path: str, engagement_id: int,
+                   lead: int = None, scan_date: str = None, active: bool = True,
                    verified: bool = False):
         """Import scan results"""
         if not Path(file_path).exists():
             raise FileNotFoundError(f"Scan file not found: {file_path}")
-        
+
         data = {
             "scan_type": scan_type,
             "engagement": engagement_id,
@@ -112,7 +112,7 @@ class DefectDojoClient:
             "active": active,
             "verified": verified,
         }
-        
+
         with open(file_path, 'rb') as f:
             files = {'file': f}
             # For multipart form data, we need to remove Content-Type header
@@ -133,10 +133,10 @@ def get_git_info():
     try:
         import subprocess
         # Get current branch
-        branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], 
+        branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
                                        cwd=Path.cwd(), text=True).strip()
         # Get latest commit hash (short)
-        commit = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'], 
+        commit = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
                                        cwd=Path.cwd(), text=True).strip()
         return branch, commit
     except:
@@ -155,35 +155,35 @@ def get_zap_report_path():
 # === Main Logic ===
 def main():
     """Upload ZAP scan results to DefectDojo"""
-    
+
     # Validate required environment variables
     if not DEFECTDOJO_API_KEY:
         print("❌ DEFECTDOJO_API_KEY environment variable is required")
         print("   Get your API key from DefectDojo user profile")
         return 1
-    
+
     # Find ZAP report
     zap_report = get_zap_report_path()
     if not zap_report:
         return 1
-    
+
     # Get git info for better engagement naming
     branch, commit = get_git_info()
     engagement_name = f"{ENGAGEMENT_NAME} - {branch}@{commit}"
-    
+
     print(f"🚀 Uploading ZAP scan to DefectDojo...")
     print(f"   Host: {DD_HOST}")
     print(f"   Product: {PRODUCT_NAME}")
     print(f"   Engagement: {engagement_name}")
     print(f"   Report: {zap_report}")
-    
+
     try:
         with DefectDojoClient(DD_HOST, DEFECTDOJO_API_KEY) as api:
-            
+
             # Step 1: Find or create product
             print(f"🔎 Checking for existing product: {PRODUCT_NAME}")
             products_response = api.get_products(name=PRODUCT_NAME)
-            
+
             if products_response["count"] == 0:
                 print("📦 Product not found, creating...")
                 product = api.create_product(
@@ -195,7 +195,7 @@ def main():
             else:
                 product = products_response["results"][0]
                 print(f"✅ Found existing product: {product['name']} (ID: {product['id']})")
-            
+
             # Step 2: Create engagement
             print(f"📁 Creating engagement: {engagement_name}")
             engagement = api.create_engagement(
@@ -208,7 +208,7 @@ def main():
                 description=f"ZAP DAST scan for branch {branch} at commit {commit}"
             )
             print(f"✅ Created engagement: {engagement['name']} (ID: {engagement['id']})")
-            
+
             # Step 3: Upload ZAP scan
             print("📤 Uploading ZAP scan results...")
             scan_result = api.import_scan(
@@ -220,13 +220,13 @@ def main():
                 active=True,
                 verified=False
             )
-            
+
             print("✅ Scan uploaded to DefectDojo successfully!")
             print(f"   Scan ID: {scan_result.get('scan_id', 'N/A')}")
             print(f"   View results: {DD_HOST}/engagement/{engagement['id']}")
-            
+
             return 0
-            
+
     except Exception as e:
         print(f"❌ Failed to upload scan: {e}")
         return 1
