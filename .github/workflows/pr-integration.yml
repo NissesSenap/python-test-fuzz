@@ -58,7 +58,6 @@ jobs:
       env:
         PYTHONPATH: .
       continue-on-error: true  # Don't fail the workflow, we want to report results
-      need: start_server
 
     - name: Run security scan
       run: |
@@ -101,7 +100,6 @@ jobs:
         # and doesn't try to manage the server lifecycle
         make zap-baseline-ci
       continue-on-error: true
-      need: [start_server, setup-zap]
 
     - name: Generate GitHub Actions Summary
       if: always()
