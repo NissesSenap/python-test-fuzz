@@ -61,25 +61,39 @@ def check_pip_audit_results(pip_audit_file: str) -> Tuple[bool, List[str]]:
 
         vulnerabilities = data if isinstance(data, list) else [data]
 
-        high_severity_vulns = []
-        all_vulns = []
+        # Count by severity
+        severity_counts = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'unknown': 0}
 
         for vuln in vulnerabilities:
             severity = (vuln.get('severity', '') or '').lower()
-            all_vulns.append(vuln)
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+            else:
+                severity_counts['unknown'] += 1
 
-            if severity in ['high', 'critical']:
-                high_severity_vulns.append(vuln)
+        total_vulns = sum(severity_counts.values())
+        high_critical_vulns = severity_counts['critical'] + severity_counts['high']
 
-        if high_severity_vulns:
+        if total_vulns == 0:
+            return False, []
+
+        # Build detailed breakdown
+        breakdown_parts = []
+        for severity in ['critical', 'high', 'medium', 'low']:
+            if severity_counts[severity] > 0:
+                breakdown_parts.append(f"{severity_counts[severity]} {severity}")
+        if severity_counts['unknown'] > 0:
+            breakdown_parts.append(f"{severity_counts['unknown']} unknown")
+
+        if high_critical_vulns > 0:
             critical = True
-            issues.append(f"{len(high_severity_vulns)} critical/high severity dependency vulnerabilities found")
-        elif all_vulns:
+            issues.append(f"Dependency vulnerabilities: {', '.join(breakdown_parts)} (critical due to high/critical severity)")
+        elif total_vulns > 0:
             if FAIL_ON_ANY_VULNERABILITY:
                 critical = True
-                issues.append(f"{len(all_vulns)} dependency vulnerabilities found (treating as critical)")
+                issues.append(f"Dependency vulnerabilities: {', '.join(breakdown_parts)} (treating as critical)")
             else:
-                issues.append(f"{len(all_vulns)} dependency vulnerabilities found (not critical)")
+                issues.append(f"Dependency vulnerabilities: {', '.join(breakdown_parts)} (not critical)")
 
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         print(f"Warning: Could not parse pip-audit results: {e}")
@@ -111,24 +125,39 @@ def check_bandit_results(bandit_file: str) -> Tuple[bool, List[str]]:
         if not results:
             return False, []
 
-        high_severity_issues = []
-        all_issues = results
+        # Count by severity
+        severity_counts = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'unknown': 0}
 
         for issue in results:
             severity = (issue.get('issue_severity', '') or '').lower()
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+            else:
+                severity_counts['unknown'] += 1
 
-            if severity in ['high', 'critical']:
-                high_severity_issues.append(issue)
+        total_issues = sum(severity_counts.values())
+        high_critical_issues = severity_counts['critical'] + severity_counts['high']
 
-        if high_severity_issues:
+        if total_issues == 0:
+            return False, []
+
+        # Build detailed breakdown
+        breakdown_parts = []
+        for severity in ['critical', 'high', 'medium', 'low']:
+            if severity_counts[severity] > 0:
+                breakdown_parts.append(f"{severity_counts[severity]} {severity}")
+        if severity_counts['unknown'] > 0:
+            breakdown_parts.append(f"{severity_counts['unknown']} unknown")
+
+        if high_critical_issues > 0:
             critical = True
-            issues.append(f"{len(high_severity_issues)} critical/high severity code security issues found")
-        elif all_issues:
+            issues.append(f"Code security issues: {', '.join(breakdown_parts)} (critical due to high/critical severity)")
+        elif total_issues > 0:
             if FAIL_ON_ANY_VULNERABILITY:
                 critical = True
-                issues.append(f"{len(all_issues)} code security issues found (treating as critical)")
+                issues.append(f"Code security issues: {', '.join(breakdown_parts)} (treating as critical)")
             else:
-                issues.append(f"{len(all_issues)} code security issues found (not critical)")
+                issues.append(f"Code security issues: {', '.join(breakdown_parts)} (not critical)")
 
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         print(f"Warning: Could not parse bandit results: {e}")
@@ -170,22 +199,46 @@ def check_zap_results(zap_file: str) -> Tuple[bool, List[str]]:
         if not alerts:
             return False, []
 
-        high_risk_alerts = [alert for alert in alerts if alert.get('risk', '').lower() == 'high']
-        medium_risk_alerts = [alert for alert in alerts if alert.get('risk', '').lower() == 'medium']
+        # Count by risk level (ZAP uses 'risk' instead of 'severity')
+        risk_counts = {'high': 0, 'medium': 0, 'low': 0, 'informational': 0, 'unknown': 0}
 
-        if high_risk_alerts:
+        for alert in alerts:
+            risk = (alert.get('risk', '') or '').lower()
+            # ZAP sometimes uses 'info' instead of 'informational'
+            if risk == 'info':
+                risk = 'informational'
+
+            if risk in risk_counts:
+                risk_counts[risk] += 1
+            else:
+                risk_counts['unknown'] += 1
+
+        total_alerts = sum(risk_counts.values())
+        high_risk_alerts = risk_counts['high']
+        medium_risk_alerts = risk_counts['medium']
+
+        if total_alerts == 0:
+            return False, []
+
+        # Build detailed breakdown
+        breakdown_parts = []
+        for risk in ['high', 'medium', 'low', 'informational']:
+            if risk_counts[risk] > 0:
+                breakdown_parts.append(f"{risk_counts[risk]} {risk}")
+        if risk_counts['unknown'] > 0:
+            breakdown_parts.append(f"{risk_counts['unknown']} unknown")
+
+        if high_risk_alerts > 0:
             critical = True
-            issues.append(f"{len(high_risk_alerts)} high-risk DAST security issues found")
-        elif medium_risk_alerts:
+            issues.append(f"DAST security issues: {', '.join(breakdown_parts)} (critical due to high-risk alerts)")
+        elif medium_risk_alerts > 0:
             if FAIL_ON_MEDIUM_RISK:
                 critical = True
-                issues.append(f"{len(medium_risk_alerts)} medium-risk DAST security issues found (treating as critical)")
+                issues.append(f"DAST security issues: {', '.join(breakdown_parts)} (treating medium-risk as critical)")
             else:
-                issues.append(f"{len(medium_risk_alerts)} medium-risk DAST security issues found (not critical)")
-
-        if len(alerts) > len(high_risk_alerts) + len(medium_risk_alerts):
-            other_alerts = len(alerts) - len(high_risk_alerts) - len(medium_risk_alerts)
-            issues.append(f"{other_alerts} other DAST security issues found")
+                issues.append(f"DAST security issues: {', '.join(breakdown_parts)} (not critical)")
+        elif total_alerts > 0:
+            issues.append(f"DAST security issues: {', '.join(breakdown_parts)} (low risk)")
 
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         print(f"Warning: Could not parse ZAP results: {e}")
