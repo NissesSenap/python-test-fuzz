@@ -111,13 +111,33 @@ jobs:
       run: |
         python generate_pr_output.py comment reports/pytest-results.json reports/pip-audit-report.json reports/bandit-report.json reports/zap-report.json
 
-    - name: Post PR Comment
+    - name: Post PR Comment and Set Status Check
       if: always() && github.event_name == 'pull_request'
       uses: actions/github-script@v7
       with:
         script: |
           const fs = require('fs');
+          const { execSync } = require('child_process');
 
+          // Get security status by calling our Python script
+          let state = 'success';
+          let description = 'All API fuzzing tests passed';
+
+          try {
+            const statusOutput = execSync(
+              'python check_security_critical.py status reports/pytest-results.json reports/pip-audit-report.json reports/bandit-report.json reports/zap-report.json',
+              { encoding: 'utf8' }
+            );
+            const results = JSON.parse(statusOutput);
+            state = results.state;
+            description = results.description;
+          } catch (error) {
+            console.log('Error getting security status:', error.message);
+            state = 'error';
+            description = 'Could not determine test results';
+          }
+
+          // Post or update PR comment
           try {
             const comment = fs.readFileSync('pr-comment.md', 'utf8');
 
@@ -141,6 +161,7 @@ jobs:
                 comment_id: botComment.id,
                 body: comment
               });
+              console.log('Updated existing PR comment');
             } else {
               // Create new comment
               await github.rest.issues.createComment({
@@ -149,38 +170,13 @@ jobs:
                 issue_number: context.issue.number,
                 body: comment
               });
+              console.log('Created new PR comment');
             }
           } catch (error) {
             console.log('Could not post PR comment:', error);
           }
 
-    - name: Check for Critical Security Issues
-      if: always()
-      run: |
-        python check_security_critical.py status reports/pytest-results.json reports/pip-audit-report.json reports/bandit-report.json reports/zap-report.json > security-status.json
-
-    - name: Set PR Status Check
-      if: always() && github.event_name == 'pull_request'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-
-          let state = 'success';
-          let description = 'All API fuzzing tests passed';
-
-          try {
-            if (fs.existsSync('security-status.json')) {
-              const results = JSON.parse(fs.readFileSync('security-status.json', 'utf8'));
-              state = results.state;
-              description = results.description;
-            }
-          } catch (error) {
-            console.log('Error reading security status:', error);
-            state = 'error';
-            description = 'Could not determine test results';
-          }
-
+          // Set PR status check
           try {
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
