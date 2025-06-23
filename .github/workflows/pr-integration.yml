@@ -14,11 +14,11 @@ permissions:
 jobs:
   api-fuzzing-with-pr:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Python 3.13
       uses: actions/setup-python@v5
       with:
@@ -39,6 +39,7 @@ jobs:
         pip install bandit pip-audit pytest-json-report
 
     - name: Start FastAPI server
+      id: start_server
       run: |
         python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
         echo $! > server.pid
@@ -61,23 +62,54 @@ jobs:
     - name: Run security scan
       run: |
         mkdir -p reports
-        
+
         # Run bandit
         bandit -r . -f json -o reports/bandit-report.json -x .venv,venv || true
-        
-        # Run pip-audit  
+
+        # Run pip-audit
         pip-audit --format=json --output=reports/pip-audit-report.json || true
+      continue-on-error: true
+
+    - name: Cache ZAP Docker image
+      id: cache-zap
+      uses: actions/cache@v4
+      with:
+        path: /tmp/zap-image.tar
+        key: zap-docker-image-${{ runner.os }}-stable
+        restore-keys: |
+          zap-docker-image-${{ runner.os }}-
+
+    - name: Setup ZAP for DAST scanning
+      id: setup-zap
+      run: |
+        # Load cached Docker image if available
+        if [ -f /tmp/zap-image.tar ]; then
+          echo "Loading ZAP Docker image from cache..."
+          docker load -i /tmp/zap-image.tar
+        else
+          echo "Pulling ZAP Docker image..."
+          docker pull zaproxy/zap-stable
+          # Save image to cache
+          echo "Saving ZAP Docker image to cache..."
+          docker save -o /tmp/zap-image.tar zaproxy/zap-stable
+        fi
+
+    - name: Run ZAP Baseline scan (Makefile)
+      run: |
+        # Use CI-specific target that assumes server is already running
+        # and doesn't try to manage the server lifecycle
+        make zap-baseline-ci
       continue-on-error: true
 
     - name: Generate GitHub Actions Summary
       if: always()
       run: |
-        python generate_pr_output.py summary reports/pytest-results.json reports/pip-audit-report.json
+        python generate_pr_output.py summary reports/pytest-results.json reports/pip-audit-report.json reports/bandit-report.json reports/zap-report.json
 
     - name: Generate PR Comment
       if: always() && github.event_name == 'pull_request'
       run: |
-        python generate_pr_output.py comment reports/pytest-results.json reports/pip-audit-report.json
+        python generate_pr_output.py comment reports/pytest-results.json reports/pip-audit-report.json reports/bandit-report.json reports/zap-report.json
 
     - name: Post PR Comment
       if: always() && github.event_name == 'pull_request'
@@ -85,22 +117,22 @@ jobs:
       with:
         script: |
           const fs = require('fs');
-          
+
           try {
             const comment = fs.readFileSync('pr-comment.md', 'utf8');
-            
+
             // Look for existing comment from this workflow
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-            
-            const botComment = comments.data.find(comment => 
-              comment.user.type === 'Bot' && 
+
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
               comment.body.includes('API Fuzzing Results')
             );
-            
+
             if (botComment) {
               // Update existing comment
               await github.rest.issues.updateComment({
@@ -128,22 +160,22 @@ jobs:
       with:
         script: |
           const fs = require('fs');
-          
+
           let state = 'success';
           let description = 'All API fuzzing tests passed';
-          
+
           try {
             // Check test results
             if (fs.existsSync('reports/pytest-results.json')) {
               const testResults = JSON.parse(fs.readFileSync('reports/pytest-results.json', 'utf8'));
               const failed = testResults.summary?.failed || 0;
-              
+
               if (failed > 0) {
                 state = 'failure';
                 description = `${failed} API fuzzing tests failed`;
               }
             }
-            
+
             // Check security results
             if (fs.existsSync('reports/pip-audit-report.json')) {
               const secResults = JSON.parse(fs.readFileSync('reports/pip-audit-report.json', 'utf8'));
@@ -156,12 +188,29 @@ jobs:
                 }
               }
             }
+
+            // Check ZAP DAST results
+            if (fs.existsSync('reports/zap-report.json')) {
+              const zapResults = JSON.parse(fs.readFileSync('reports/zap-report.json', 'utf8'));
+              const zapAlerts = zapResults.alerts || [];
+              const highRiskAlerts = zapAlerts.filter(alert => alert.risk === 'High').length;
+              const mediumRiskAlerts = zapAlerts.filter(alert => alert.risk === 'Medium').length;
+
+              if (highRiskAlerts > 0 || mediumRiskAlerts > 0) {
+                if (state === 'success') {
+                  state = 'failure';
+                  description = `${highRiskAlerts + mediumRiskAlerts} DAST security issues found`;
+                } else {
+                  description += ` and ${highRiskAlerts + mediumRiskAlerts} DAST security issues found`;
+                }
+              }
+            }
           } catch (error) {
             console.log('Error reading results:', error);
             state = 'error';
             description = 'Could not determine test results';
           }
-          
+
           try {
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
@@ -175,12 +224,12 @@ jobs:
             console.log(`Status check set: ${state} - ${description}`);
           } catch (statusError) {
             console.log('Could not set commit status (insufficient permissions):', statusError.message);
-            
+
             // Try to use Check Runs API as fallback
             try {
               const checkState = state === 'success' ? 'completed' : 'completed';
               const conclusion = state === 'success' ? 'success' : 'failure';
-              
+
               await github.rest.checks.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,

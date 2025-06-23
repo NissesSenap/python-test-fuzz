@@ -1,6 +1,6 @@
 # Simplified Makefile for Security and Quality Checks
 
-.PHONY: help bandit pip-audit ruff verify-reports all clean
+.PHONY: help bandit pip-audit ruff zap-scan zap-baseline zap-start zap-stop zap-status verify-reports all clean
 .DEFAULT_GOAL := help
 
 # Variables
@@ -11,6 +11,7 @@ REPORTS_DIR := reports
 GREEN := \033[0;32m
 YELLOW := \033[1;33m
 BLUE := \033[0;34m
+RED := \033[0;31m
 NC := \033[0m # No Color
 
 help: ## Show available commands
@@ -43,14 +44,106 @@ ruff: ## Run ruff code linting
 		exit 1; \
 	fi
 
+zap-start: ## Start ZAP daemon for DAST scanning
+	@echo "$(GREEN)Starting ZAP daemon...$(NC)"
+	./zap-manage.sh start
+
+zap-stop: ## Stop ZAP daemon
+	@echo "$(GREEN)Stopping ZAP daemon...$(NC)"
+	./zap-manage.sh stop
+
+zap-status: ## Check ZAP daemon status
+	@echo "$(GREEN)Checking ZAP status...$(NC)"
+	./zap-manage.sh status
+
+zap-scan: ## Run ZAP DAST scan against the API (without restarting ZAP)
+	@echo "$(GREEN)Running ZAP DAST scan...$(NC)"
+	@mkdir -p $(REPORTS_DIR)
+	@echo "$(BLUE)Checking if API is already running...$(NC)"
+	@if curl -f http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ API is already running on port 8000$(NC)"; \
+		SERVER_WAS_RUNNING=true; \
+	else \
+		echo "$(BLUE)Starting FastAPI server for scanning...$(NC)"; \
+		$(PYTHON) -m uvicorn main:app --host 0.0.0.0 --port 8000 & \
+		echo $$! > server.pid; \
+		SERVER_WAS_RUNNING=false; \
+		echo "$(BLUE)Waiting for API to be ready...$(NC)"; \
+		timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1); \
+	fi
+	@echo "$(BLUE)Checking ZAP daemon status...$(NC)"
+	@if ./zap-manage.sh status > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ ZAP daemon is already running$(NC)"; \
+		./zap-manage.sh fullscan http://localhost:8000 || true; \
+	else \
+		echo "$(BLUE)Starting ZAP daemon and running fullscan...$(NC)"; \
+		./zap-manage.sh start && ./zap-manage.sh fullscan http://localhost:8000 || true; \
+	fi
+	@if [ -f server.pid ]; then \
+		echo "$(BLUE)Stopping FastAPI server we started...$(NC)"; \
+		kill $$(cat server.pid) || true; \
+		rm server.pid; \
+	fi
+	@echo "$(GREEN)✓ ZAP DAST scan completed$(NC)"
+
+zap-baseline: ## Run ZAP baseline scan via daemon (without restarting ZAP)
+	@echo "$(GREEN)Running ZAP baseline scan via daemon...$(NC)"
+	@mkdir -p $(REPORTS_DIR)
+	@echo "$(BLUE)Checking if API is already running...$(NC)"
+	@if curl -f http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ API is already running on port 8000$(NC)"; \
+		SERVER_WAS_RUNNING=true; \
+	else \
+		echo "$(BLUE)Starting FastAPI server for scanning...$(NC)"; \
+		$(PYTHON) -m uvicorn main:app --host 0.0.0.0 --port 8000 & \
+		echo $$! > server.pid; \
+		SERVER_WAS_RUNNING=false; \
+		echo "$(BLUE)Waiting for API to be ready...$(NC)"; \
+		timeout 30 bash -c 'until curl -f http://localhost:8000/health > /dev/null 2>&1; do sleep 1; done' || (echo "$(RED)API failed to start$(NC)" && exit 1); \
+	fi
+	@echo "$(BLUE)Checking ZAP daemon status...$(NC)"
+	@if ./zap-manage.sh status > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ ZAP daemon is already running$(NC)"; \
+		./zap-manage.sh baseline http://localhost:8000 || true; \
+	else \
+		echo "$(BLUE)Starting ZAP daemon and running baseline scan...$(NC)"; \
+		./zap-manage.sh start && ./zap-manage.sh baseline http://localhost:8000 || true; \
+	fi
+	@if [ -f server.pid ]; then \
+		echo "$(BLUE)Stopping FastAPI server we started...$(NC)"; \
+		kill $$(cat server.pid) || true; \
+		rm server.pid; \
+	fi
+	@echo "$(GREEN)✓ ZAP baseline scan completed$(NC)"
+
+zap-baseline-ci: ## Run ZAP baseline scan for CI (assumes server is already running)
+	@echo "$(GREEN)Running ZAP baseline scan for CI...$(NC)"
+	@mkdir -p $(REPORTS_DIR)
+	@echo "$(BLUE)Verifying API is running on port 8000...$(NC)"
+	@if curl -f http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ API is running on port 8000$(NC)"; \
+	else \
+		echo "$(RED)✗ API is not running on port 8000$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Checking ZAP daemon status...$(NC)"
+	@if ./zap-manage.sh status > /dev/null 2>&1; then \
+		echo "$(GREEN)✓ ZAP daemon is already running$(NC)"; \
+		./zap-manage.sh baseline http://localhost:8000 || true; \
+	else \
+		echo "$(BLUE)Starting ZAP daemon and running baseline scan...$(NC)"; \
+		./zap-manage.sh start && ./zap-manage.sh baseline http://localhost:8000 || true; \
+	fi
+	@echo "$(GREEN)✓ ZAP baseline scan completed$(NC)"
+
 verify-reports: ## Run generate_pr_output.py to verify report generation
 	@echo "$(GREEN)Verifying report generation...$(NC)"
 	@mkdir -p $(REPORTS_DIR)
-	$(PYTHON) generate_pr_output.py summary $(REPORTS_DIR)/pytest-results.json $(REPORTS_DIR)/pip-audit-report.json $(REPORTS_DIR)/bandit-report.json || true
-	$(PYTHON) generate_pr_output.py comment $(REPORTS_DIR)/pytest-results.json $(REPORTS_DIR)/pip-audit-report.json $(REPORTS_DIR)/bandit-report.json || true
+	$(PYTHON) generate_pr_output.py summary $(REPORTS_DIR)/pytest-results.json $(REPORTS_DIR)/pip-audit-report.json $(REPORTS_DIR)/bandit-report.json $(REPORTS_DIR)/zap-report.json || true
+	$(PYTHON) generate_pr_output.py comment $(REPORTS_DIR)/pytest-results.json $(REPORTS_DIR)/pip-audit-report.json $(REPORTS_DIR)/bandit-report.json $(REPORTS_DIR)/zap-report.json || true
 	@echo "$(GREEN)✓ Report verification completed$(NC)"
 
-all: bandit pip-audit ruff verify-reports ## Run all security scans, linting, and report verification
+all: bandit pip-audit ruff zap-scan verify-reports ## Run all security scans, linting, and report verification
 
 clean: ## Clean up generated reports
 	@echo "$(GREEN)Cleaning up reports...$(NC)"

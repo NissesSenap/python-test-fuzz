@@ -33,44 +33,71 @@ def generate_job_summary(test_results, security_results):
     
     total_issues = security_results.get('total_issues', 0)
     if total_issues == 0:
-        summary += "✅ **No security issues found**\n\n"
+        summary += "✅ **No security issues found across all tools**\n\n"
     else:
-        summary += f"⚠️ **{total_issues} security issues found**\n\n"
-        
-        # Break down by type
-        vulnerabilities = security_results.get('vulnerabilities', 0)
-        code_issues = security_results.get('code_issues', 0)
-        
-        if vulnerabilities > 0:
-            summary += f"- 🔍 **Dependencies**: {vulnerabilities} vulnerabilities\n"
-        if code_issues > 0:
-            summary += f"- 📝 **Code Issues**: {code_issues} security issues\n"
-        
-        summary += "\n**Severity Breakdown:**\n"
+        summary += f"⚠️ **{total_issues} total security issues found**\n\n"
+     # Dependency vulnerabilities (pip-audit)
+    vulnerabilities = security_results.get('vulnerabilities', 0)
+    summary += "### 🔍 Dependency Vulnerabilities (pip-audit)\n"
+    if vulnerabilities == 0:
+        summary += "✅ No dependency vulnerabilities found\n\n"
+    else:
+        pip_audit_breakdown = security_results.get('pip_audit_breakdown', {})
+        summary += f"❌ **{vulnerabilities}** dependency vulnerabilities found:\n"
+        if pip_audit_breakdown.get('high', 0) > 0:
+            summary += f"  - 🔴 High: {pip_audit_breakdown['high']}\n"
+        if pip_audit_breakdown.get('medium', 0) > 0:
+            summary += f"  - 🟡 Medium: {pip_audit_breakdown['medium']}\n"
+        if pip_audit_breakdown.get('low', 0) > 0:
+            summary += f"  - 🟢 Low: {pip_audit_breakdown['low']}\n"
+        summary += "\n"
+
+    # Code security issues (bandit)
+    code_issues = security_results.get('code_issues', 0)
+    summary += "### 📝 Code Security Issues (bandit)\n"
+    if code_issues == 0:
+        summary += "✅ No code security issues found\n\n"
+    else:
+        bandit_breakdown = security_results.get('bandit_breakdown', {})
+        summary += f"❌ **{code_issues}** code security issues found:\n"
+        if bandit_breakdown.get('high', 0) > 0:
+            summary += f"  - 🔴 High: {bandit_breakdown['high']}\n"
+        if bandit_breakdown.get('medium', 0) > 0:
+            summary += f"  - 🟡 Medium: {bandit_breakdown['medium']}\n"
+        if bandit_breakdown.get('low', 0) > 0:
+            summary += f"  - 🟢 Low: {bandit_breakdown['low']}\n"
+        summary += "\n"
+
+    # DAST security issues (ZAP)
+    dast_issues = security_results.get('dast_issues', 0)
+    summary += "### 🛡️ DAST Security Issues (ZAP)\n"
+    if dast_issues == 0:
+        summary += "✅ No DAST security issues found\n\n"
+    else:
+        zap_breakdown = security_results.get('zap_breakdown', {})
+        summary += f"❌ **{dast_issues}** DAST security issues found:\n"
+        if zap_breakdown.get('high', 0) > 0:
+            summary += f"  - 🔴 High: {zap_breakdown['high']}\n"
+        if zap_breakdown.get('medium', 0) > 0:
+            summary += f"  - 🟡 Medium: {zap_breakdown['medium']}\n"
+        if zap_breakdown.get('low', 0) > 0:
+            summary += f"  - 🟢 Low: {zap_breakdown['low']}\n"
+        if zap_breakdown.get('informational', 0) > 0:
+            summary += f"  - ℹ️ Info: {zap_breakdown['informational']}\n"
+        summary += "\n"
+    
+    # Overall severity breakdown
+    if total_issues > 0:
+        summary += "### 📊 Overall Severity Breakdown\n"
         if security_results.get('high', 0) > 0:
             summary += f"- 🔴 **High**: {security_results['high']}\n"
         if security_results.get('medium', 0) > 0:
             summary += f"- 🟡 **Medium**: {security_results['medium']}\n"
         if security_results.get('low', 0) > 0:
             summary += f"- 🟢 **Low**: {security_results['low']}\n"
-    
-    # Add recommendations
-    if test_results.get('failed', 0) > 0 or security_results.get('total_issues', 0) > 0:
-        summary += "\n## 🔧 Recommendations\n\n"
-        
-        if test_results.get('failed', 0) > 0:
-            summary += "- Review failing tests and fix API issues\n"
-            summary += "- Check server logs for detailed error information\n"
-        
-        if security_results.get('vulnerabilities', 0) > 0:
-            summary += "- Update vulnerable dependencies using pip-audit recommendations\n"
-        
-        if security_results.get('code_issues', 0) > 0:
-            summary += "- Review and fix code security issues identified by bandit\n"
-            summary += "- Consider implementing secure coding practices\n"
-        
-        if security_results.get('total_issues', 0) > 0:
-            summary += "- Review detailed security scan reports for specific remediation steps\n"
+        if security_results.get('informational', 0) > 0:
+            summary += f"- ℹ️ **Info**: {security_results['informational']}\n"
+        summary += "\n"
     
     return summary
 
@@ -101,32 +128,65 @@ def generate_pr_comment(test_results, security_results, pr_number):
 | ⏭️ Skipped | {test_results.get('skipped', 0)} |
 | ⏱️ Duration | {test_results.get('duration', 'N/A')} |
 
-### 🔒 Security Scan
+### 🔒 Security Scan Results
 """
     
+    total_issues = security_results.get('total_issues', 0)
     if total_issues == 0:
-        comment += "✅ No security issues detected\n"
+        comment += "✅ No security issues detected across all tools\n\n"
     else:
-        comment += f"⚠️ {total_issues} security issues found:\n\n"
+        comment += f"⚠️ {total_issues} total security issues found\n\n"
         
-        # Break down by type
+        # Dependency vulnerabilities (pip-audit)
         vulnerabilities = security_results.get('vulnerabilities', 0)
+        comment += "#### 🔍 Dependency Vulnerabilities (pip-audit)\n"
+        if vulnerabilities == 0:
+            comment += "✅ No dependency vulnerabilities\n\n"
+        else:
+            pip_audit_breakdown = security_results.get('pip_audit_breakdown', {})
+            comment += f"❌ **{vulnerabilities}** dependency vulnerabilities found:\n"
+            if pip_audit_breakdown.get('high', 0) > 0:
+                comment += f"  - 🔴 High: {pip_audit_breakdown['high']}\n"
+            if pip_audit_breakdown.get('medium', 0) > 0:
+                comment += f"  - 🟡 Medium: {pip_audit_breakdown['medium']}\n"
+            if pip_audit_breakdown.get('low', 0) > 0:
+                comment += f"  - 🟢 Low: {pip_audit_breakdown['low']}\n"
+            comment += "\n"
+        
+        # Code security issues (bandit)
         code_issues = security_results.get('code_issues', 0)
+        comment += "#### 📝 Code Security Issues (bandit)\n"
+        if code_issues == 0:
+            comment += "✅ No code security issues\n\n"
+        else:
+            bandit_breakdown = security_results.get('bandit_breakdown', {})
+            comment += f"❌ **{code_issues}** code security issues found:\n"
+            if bandit_breakdown.get('high', 0) > 0:
+                comment += f"  - 🔴 High: {bandit_breakdown['high']}\n"
+            if bandit_breakdown.get('medium', 0) > 0:
+                comment += f"  - 🟡 Medium: {bandit_breakdown['medium']}\n"
+            if bandit_breakdown.get('low', 0) > 0:
+                comment += f"  - 🟢 Low: {bandit_breakdown['low']}\n"
+            comment += "\n"
         
-        comment += "| Type | Count |\n|------|-------|\n"
-        if vulnerabilities > 0:
-            comment += f"| 🔍 Dependencies | {vulnerabilities} |\n"
-        if code_issues > 0:
-            comment += f"| 📝 Code Issues | {code_issues} |\n"
-        
-        comment += "\n**Severity Breakdown:**\n"
-        comment += "| Severity | Count |\n|----------|-------|\n"
-        if security_results.get('high', 0) > 0:
-            comment += f"| 🔴 High | {security_results['high']} |\n"
-        if security_results.get('medium', 0) > 0:
-            comment += f"| 🟡 Medium | {security_results['medium']} |\n"
-        if security_results.get('low', 0) > 0:
-            comment += f"| 🟢 Low | {security_results['low']} |\n"
+        # DAST security issues (ZAP)
+        dast_issues = security_results.get('dast_issues', 0)
+        comment += "#### 🛡️ DAST Security Issues (ZAP)\n"
+        if dast_issues == 0:
+            comment += "✅ No DAST security issues\n\n"
+        else:
+            zap_breakdown = security_results.get('zap_breakdown', {})
+            comment += f"❌ **{dast_issues}** DAST security issues found:\n"
+            if zap_breakdown.get('high', 0) > 0:
+                comment += f"  - 🔴 High: {zap_breakdown['high']}\n"
+            if zap_breakdown.get('medium', 0) > 0:
+                comment += f"  - 🟡 Medium: {zap_breakdown['medium']}\n"
+            if zap_breakdown.get('low', 0) > 0:
+                comment += f"  - 🟢 Low: {zap_breakdown['low']}\n"
+            if zap_breakdown.get('informational', 0) > 0:
+                comment += f"  - ℹ️ Info: {zap_breakdown['informational']}\n"
+            comment += "\n"
+        comment += "\n"
     
     comment += f"\n---\n*Generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}*"
     
@@ -277,15 +337,113 @@ def parse_bandit_results(bandit_file):
         print(f"Warning: Could not parse bandit results: {e}")
         return {'issues': 0, 'high': 0, 'medium': 0, 'low': 0}
 
-def combine_security_results(pip_audit_results, bandit_results):
-    """Combine pip-audit and bandit results into unified security summary"""
+def parse_zap_results(zap_file):
+    """Parse ZAP baseline results from JSON output"""
+    if not Path(zap_file).exists():
+        return {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
+    
+    try:
+        with open(zap_file, 'r') as f:
+            content = f.read().strip()
+            
+        # Handle empty file
+        if not content:
+            return {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
+            
+        data = json.loads(content)
+        
+        # Handle empty or invalid data
+        if not data or not isinstance(data, dict):
+            return {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
+        
+        # ZAP baseline JSON structure varies, but typically has 'alerts' or 'site' arrays
+        alerts = []
+        
+        # Try different possible structures
+        if 'alerts' in data:
+            alerts = data['alerts']
+        elif 'site' in data and isinstance(data['site'], list):
+            # Extract alerts from site structure
+            for site in data['site']:
+                if 'alerts' in site:
+                    alerts.extend(site['alerts'])
+        elif isinstance(data, list):
+            # Sometimes the root is an array of alerts
+            alerts = data
+        
+        if not alerts:
+            return {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
+        
+        severity_counts = {'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
+        
+        for alert in alerts:
+            if isinstance(alert, dict):
+                # ZAP uses 'risk' field for severity
+                risk = alert.get('risk', '').upper()
+                
+                if risk in ['HIGH', 'CRITICAL']:
+                    severity_counts['high'] += 1
+                elif risk in ['MEDIUM', 'MODERATE']:
+                    severity_counts['medium'] += 1
+                elif risk in ['LOW', 'MINOR']:
+                    severity_counts['low'] += 1
+                elif risk in ['INFORMATIONAL', 'INFO']:
+                    severity_counts['informational'] += 1
+                else:
+                    # Default to informational for unknown risk
+                    severity_counts['informational'] += 1
+            else:
+                # If alert is not a dict (unexpected format), count as informational
+                severity_counts['informational'] += 1
+        
+        return {
+            'alerts': len(alerts),
+            **severity_counts
+        }
+        
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        print(f"Warning: Could not parse ZAP results: {e}")
+        return {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
+
+def combine_security_results(pip_audit_results, bandit_results, zap_results=None):
+    """Combine pip-audit, bandit, and ZAP results into unified security summary"""
+    if zap_results is None:
+        zap_results = {'alerts': 0, 'high': 0, 'medium': 0, 'low': 0, 'informational': 0}
+    
     return {
-        'total_issues': pip_audit_results.get('vulnerabilities', 0) + bandit_results.get('issues', 0),
+        'total_issues': (pip_audit_results.get('vulnerabilities', 0) + 
+                        bandit_results.get('issues', 0) + 
+                        zap_results.get('alerts', 0)),
         'vulnerabilities': pip_audit_results.get('vulnerabilities', 0),
         'code_issues': bandit_results.get('issues', 0),
-        'high': pip_audit_results.get('high', 0) + bandit_results.get('high', 0),
-        'medium': pip_audit_results.get('medium', 0) + bandit_results.get('medium', 0),
-        'low': pip_audit_results.get('low', 0) + bandit_results.get('low', 0),
+        'dast_issues': zap_results.get('alerts', 0),
+        'high': (pip_audit_results.get('high', 0) + 
+                bandit_results.get('high', 0) + 
+                zap_results.get('high', 0)),
+        'medium': (pip_audit_results.get('medium', 0) + 
+                  bandit_results.get('medium', 0) + 
+                  zap_results.get('medium', 0)),
+        'low': (pip_audit_results.get('low', 0) + 
+               bandit_results.get('low', 0) + 
+               zap_results.get('low', 0)),
+        'informational': zap_results.get('informational', 0),
+        # Individual tool breakdowns
+        'pip_audit_breakdown': {
+            'high': pip_audit_results.get('high', 0),
+            'medium': pip_audit_results.get('medium', 0),
+            'low': pip_audit_results.get('low', 0)
+        },
+        'bandit_breakdown': {
+            'high': bandit_results.get('high', 0),
+            'medium': bandit_results.get('medium', 0),
+            'low': bandit_results.get('low', 0)
+        },
+        'zap_breakdown': {
+            'high': zap_results.get('high', 0),
+            'medium': zap_results.get('medium', 0),
+            'low': zap_results.get('low', 0),
+            'informational': zap_results.get('informational', 0)
+        }
     }
 
 def main():
@@ -293,7 +451,7 @@ def main():
     
     # Parse command line arguments
     if len(sys.argv) < 2:
-        print("Usage: python generate_pr_output.py <action> [pytest_results.json] [pip_audit_results.json] [bandit_results.json]")
+        print("Usage: python generate_pr_output.py <action> [pytest_results.json] [pip_audit_results.json] [bandit_results.json] [zap_results.json]")
         print("Actions: summary, comment")
         sys.exit(1)
     
@@ -301,14 +459,16 @@ def main():
     pytest_file = sys.argv[2] if len(sys.argv) > 2 else "reports/pytest-results.json"
     pip_audit_file = sys.argv[3] if len(sys.argv) > 3 else "reports/pip-audit-report.json"
     bandit_file = sys.argv[4] if len(sys.argv) > 4 else "reports/bandit-report.json"
+    zap_file = sys.argv[5] if len(sys.argv) > 5 else "reports/zap-report.json"
     
     # Parse test results
     test_results = parse_pytest_results(pytest_file)
     pip_audit_results = parse_pip_audit_results(pip_audit_file)
     bandit_results = parse_bandit_results(bandit_file)
+    zap_results = parse_zap_results(zap_file)
     
     # Combine security results
-    security_results = combine_security_results(pip_audit_results, bandit_results)
+    security_results = combine_security_results(pip_audit_results, bandit_results, zap_results)
     
     if action == "summary":
         # Generate job summary
