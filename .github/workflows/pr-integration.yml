@@ -39,6 +39,7 @@ jobs:
         pip install bandit pip-audit pytest-json-report
 
     - name: Start FastAPI server
+      id: start_server
       run: |
         python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
         echo $! > server.pid
@@ -57,6 +58,7 @@ jobs:
       env:
         PYTHONPATH: .
       continue-on-error: true  # Don't fail the workflow, we want to report results
+      need: start_server
 
     - name: Run security scan
       run: |
@@ -75,6 +77,7 @@ jobs:
         # and doesn't try to manage the server lifecycle
         make zap-baseline-ci
       continue-on-error: true
+      need: start_server
 
     - name: Generate GitHub Actions Summary
       if: always()
